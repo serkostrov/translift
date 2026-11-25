@@ -4,20 +4,46 @@ export class ApiError extends Error {
   readonly body: unknown;
 
   constructor(status: number, body: unknown) {
-    super(`API ${status}`);
+    super(errorText(body) ?? `Ошибка сервера (${status})`);
     this.status = status;
     this.body = body;
   }
 }
 
-type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown };
+function errorText(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || !('message' in body)) return null;
+  const { message } = body as { message: unknown };
+  if (Array.isArray(message)) return message.join('; ');
+  return typeof message === 'string' ? message : null;
+}
+
+/** Текст ошибки для пользователя. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof TypeError) return 'Нет связи с сервером';
+  return 'Что-то пошло не так';
+}
+
+type RequestOptions = Omit<RequestInit, 'body'> & {
+  body?: unknown;
+  query?: Record<string, string | number | boolean | null | undefined>;
+};
 
 /**
  * Запрос к backend. Пути относительные (`/health` → `/api/health`):
  * в разработке их проксирует Vite, на сервере — Caddy. Сессия — в cookie.
  */
-export async function http<T>(path: string, { body, headers, ...init }: RequestOptions = {}) {
-  const res = await fetch(`/api${path}`, {
+export async function http<T>(
+  path: string,
+  { body, headers, query, ...init }: RequestOptions = {},
+) {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query ?? {})) {
+    if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+  }
+  const qs = params.size ? `?${params}` : '';
+
+  const res = await fetch(`/api${path}${qs}`, {
     credentials: 'include',
     ...init,
     headers: {
@@ -29,6 +55,7 @@ export async function http<T>(path: string, { body, headers, ...init }: RequestO
     body: body === undefined || body instanceof FormData ? body : JSON.stringify(body),
   });
 
+  if (res.status === 204) return undefined as T;
   const data = res.headers.get('content-type')?.includes('application/json')
     ? await res.json()
     : await res.text();

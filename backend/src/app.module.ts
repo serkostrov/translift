@@ -1,16 +1,27 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_FILTER } from '@nestjs/core';
+import { AuditModule } from './common/audit/audit.service.js';
 import { envSchema } from './common/config/env.js';
 import { PrismaModule } from './common/prisma/prisma.module.js';
+import { PrismaExceptionFilter } from './common/prisma/prisma-exception.filter.js';
 import { S3Module } from './common/s3/s3.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { ObjectsModule } from './modules/objects/objects.module.js';
+import { RefsModule } from './modules/refs/refs.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: envSchema }),
     PrismaModule,
     S3Module,
+    AuditModule,
+    AuthModule,
     HealthModule,
+    RefsModule,
+    ObjectsModule,
   ],
+  providers: [{ provide: APP_FILTER, useClass: PrismaExceptionFilter }],
 })
 export class AppModule {}

@@ -1,5 +1,6 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/auth/decorators.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { S3Service } from '../../common/s3/s3.service.js';
 
@@ -11,6 +12,7 @@ export class HealthController {
     private readonly s3: S3Service,
   ) {}
 
+  @Public()
   @Get()
   async check() {
     const [db, storage] = await Promise.allSettled([

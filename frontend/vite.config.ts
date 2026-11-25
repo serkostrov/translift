@@ -6,7 +6,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Схемы и типы API — общие с backend (см. docs/PLAN.md)
+      '@contracts': fileURLToPath(new URL('../backend/src/contracts/index.ts', import.meta.url)),
+    },
   },
   server: {
     port: 5174,

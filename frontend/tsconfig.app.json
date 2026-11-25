@@ -18,8 +18,9 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@contracts": ["../backend/src/contracts/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../backend/src/contracts"]
 }

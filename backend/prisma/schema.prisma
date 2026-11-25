@@ -30,10 +30,7 @@ model User {
   createdAt    DateTime @default(now()) @db.Timestamptz
   updatedAt    DateTime @updatedAt @db.Timestamptz
 
-  brigadeId String?  @db.Uuid
-  brigade   Brigade? @relation("BrigadeMembers", fields: [brigadeId], references: [id])
-
-  ledBrigades   Brigade[]      @relation("BrigadeForeman")
+  ledBrigade    Brigade?       @relation("BrigadeForeman")
   sessions      Session[]
   stageMarks    StageMark[]
   files         File[]
@@ -62,9 +59,8 @@ model Brigade {
   name      String
   headcount Int          @default(1)
   isActive  Boolean      @default(true)
-  foremanId String?      @db.Uuid
+  foremanId String?      @unique @db.Uuid
   foreman   User?        @relation("BrigadeForeman", fields: [foremanId], references: [id])
-  members   User[]       @relation("BrigadeMembers")
   objects   LiftObject[]
   createdAt DateTime     @default(now()) @db.Timestamptz
   updatedAt DateTime     @updatedAt @db.Timestamptz

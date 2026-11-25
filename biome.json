@@ -67,10 +67,28 @@
             "useSemanticElements": "off"
           },
           "suspicious": {
-            "noArrayIndexKey": "off"
+            "noArrayIndexKey": "off",
+            "noDoubleEquals": "off"
           },
           "correctness": {
             "noComponentHookFactories": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["frontend/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "cn": "cn — из @/shared/lib/utils (shadcn иногда ставит лишний пакет cn)"
+                }
+              }
+            }
           }
         }
       }

@@ -37,6 +37,12 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
+Демо-данные из прототипа (4 бригады с бригадирами, 11 объектов), по желанию:
+
+```bash
+pnpm --filter backend db:seed:demo
+```
+
 ```bash
 pnpm dev
 ```
@@ -47,7 +53,7 @@ pnpm dev
 - API: http://localhost:3000/api, Swagger: http://localhost:3000/api/docs
 - Консоль MinIO: http://localhost:9102
 
-Порты сдвинуты (Postgres `5433`, MinIO `9101`/`9102`), чтобы не мешать другим проектам. Логин и пароль первого администратора берутся из `backend/.env` (`SEED_ADMIN_*`).
+Порты сдвинуты (Postgres `5433`, MinIO `9101`/`9102`), чтобы не мешать другим проектам. Логин и пароль первого администратора — в `backend/.env` (`SEED_ADMIN_*`). Демо-бригадиры входят под логинами `smirnov`, `kozlov`, `volkov`, `zaitsev` с паролем `SEED_DEMO_PASSWORD`.
 
 ## Команды
 
@@ -57,7 +63,7 @@ pnpm dev
 | `pnpm lint` / `pnpm lint:fix`       | Biome: линтер, форматирование, сортировка импортов |
 | `pnpm typecheck`                    | Проверка типов в обоих пакетах                     |
 | `pnpm test`                         | Unit-тесты backend (Vitest)                        |
-| `pnpm --filter backend test:e2e`    | e2e backend, нужны запущенные Postgres и MinIO     |
+| `pnpm --filter backend test:e2e`    | e2e backend на отдельной базе `translift_test`     |
 | `pnpm db:migrate`                   | Создать и применить миграцию Prisma                |
 | `pnpm db:studio`                    | Prisma Studio                                      |
 | `pnpm infra:up` / `pnpm infra:down` | Поднять или остановить Postgres и MinIO            |
