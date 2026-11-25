@@ -12,7 +12,7 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldError, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
-import { Skeleton } from '@/shared/ui/skeleton';
+import { BlockSkeleton } from '@/shared/ui/skeletons';
 
 const rub = (v: number | null) =>
   v === null ? '—' : `${v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽`;
@@ -48,7 +48,7 @@ export function FinanceCard({ objectId }: { objectId: string }) {
     if (finance.data) form.reset(toForm(finance.data));
   }, [finance.data, form]);
 
-  if (finance.isPending) return <Skeleton className="h-64" />;
+  if (finance.isPending) return <BlockSkeleton lines={6} />;
   if (finance.isError) return <p className="text-destructive">{errorMessage(finance.error)}</p>;
   const f = finance.data;
 

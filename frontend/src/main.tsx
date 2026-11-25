@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 import { QueryProvider } from '@/app/providers/query-provider';
 import { router } from '@/app/router';
+import { PwaUpdater } from '@/features/pwa';
 import { Toaster } from '@/shared/ui/sonner';
 import { TooltipProvider } from '@/shared/ui/tooltip';
 import '@/app/styles/index.css';
@@ -18,6 +19,7 @@ createRoot(root).render(
         <TooltipProvider>
           <RouterProvider router={router} />
           <Toaster position="top-center" />
+          <PwaUpdater />
         </TooltipProvider>
       </QueryProvider>
     </ThemeProvider>

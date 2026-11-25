@@ -8,8 +8,8 @@ import { formatDate, formatDateTime, plural } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
-import { Skeleton } from '@/shared/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { DataList } from '@/shared/ui/data-list';
+import { DashboardSkeleton } from '@/shared/ui/skeletons';
 
 const useDashboard = () =>
   useQuery({
@@ -21,7 +21,7 @@ const useDashboard = () =>
 export function DashboardPage() {
   const dash = useDashboard();
 
-  if (dash.isPending) return <Skeleton className="h-[70vh] w-full" />;
+  if (dash.isPending) return <DashboardSkeleton />;
   if (dash.isError) return <p className="text-destructive">Не удалось загрузить сводку</p>;
   const d = dash.data;
 
@@ -64,7 +64,7 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -81,7 +81,7 @@ export function DashboardPage() {
                 <Link
                   key={o.id}
                   to={`/objects/${o.id}`}
-                  className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted"
+                  className="flex flex-wrap items-start gap-x-3 gap-y-1 rounded-md px-2 py-2 hover:bg-muted"
                 >
                   <span
                     className={cn(
@@ -97,7 +97,7 @@ export function DashboardPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground">
+                  <div className="basis-full pl-5 text-xs text-muted-foreground sm:basis-auto sm:pl-0 sm:text-right">
                     {o.percent}% · {o.brigade?.name ?? '—'}
                   </div>
                 </Link>
@@ -105,44 +105,53 @@ export function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="pb-0">
-            <CardHeader>
-              <CardTitle>Бригады</CardTitle>
-            </CardHeader>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Бригада</TableHead>
-                  <TableHead>Объектов</TableHead>
-                  <TableHead>Средний %</TableHead>
-                  <TableHead>Под риском</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {d.brigades.map((b) => (
-                  <TableRow key={b.id}>
-                    <TableCell>
+          <div className="space-y-2">
+            <h2 className="px-1 font-semibold">Бригады</h2>
+            <DataList
+              rows={d.brigades}
+              rowKey={(b) => b.id}
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Бригада',
+                  mobile: 'title',
+                  cell: (b) => (
+                    <>
                       <Link to={`/objects?brigade=${b.id}`} className="font-medium hover:underline">
                         {b.name}
                       </Link>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs font-normal text-muted-foreground">
                         {b.foreman ?? 'бригадир не назначен'}, {b.headcount} чел.
                       </div>
-                    </TableCell>
-                    <TableCell className="tabular-nums">{b.objects}</TableCell>
-                    <TableCell className="tabular-nums">{b.avgPercent}%</TableCell>
-                    <TableCell>
-                      {b.risk ? (
-                        <Badge variant="destructive">{b.risk}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">нет</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+                    </>
+                  ),
+                },
+                {
+                  key: 'risk',
+                  header: 'Под риском',
+                  mobile: 'aside',
+                  cell: (b) =>
+                    b.risk ? (
+                      <Badge variant="destructive">{b.risk} под риском</Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">без риска</span>
+                    ),
+                },
+                {
+                  key: 'objects',
+                  header: 'Объектов',
+                  cell: (b) => b.objects,
+                  className: 'tabular-nums',
+                },
+                {
+                  key: 'avg',
+                  header: 'Средний %',
+                  cell: (b) => `${b.avgPercent}%`,
+                  className: 'tabular-nums',
+                },
+              ]}
+            />
+          </div>
         </div>
 
         <Card>
@@ -167,11 +176,19 @@ export function DashboardPage() {
                     </Link>
                   </div>
                   {m.comment && <p className="text-sm">{m.comment}</p>}
-                  <PhotoThumbs photos={m.photos} size="sm" />
                 </div>
-                <time className="text-xs whitespace-nowrap text-muted-foreground">
-                  {formatDateTime(m.performedAt)}
-                </time>
+                {/* Справа — дата и фото столбиком: текст слева не теснится */}
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <time className="text-xs whitespace-nowrap text-muted-foreground">
+                    {formatDateTime(m.performedAt)}
+                  </time>
+                  <PhotoThumbs
+                    photos={m.photos}
+                    size="sm"
+                    direction="column"
+                    caption={() => `${m.stage}, ${m.object.shortAddress}`}
+                  />
+                </div>
               </div>
             ))}
           </CardContent>
@@ -193,14 +210,21 @@ function Kpi({
   to?: string;
 }) {
   const card = (
-    <Card className={cn('gap-1 p-4', danger && 'border-red-300 dark:border-red-900')}>
+    <Card className={cn('h-full gap-1 p-4', danger && 'border-red-300 dark:border-red-900')}>
       <div className={cn('text-3xl font-semibold tabular-nums', danger && 'text-destructive')}>
         {value}
       </div>
       <div className="text-sm text-muted-foreground">{label}</div>
     </Card>
   );
-  return to ? <Link to={to}>{card}</Link> : card;
+  // Ссылка — блочная на всю высоту ячейки, иначе карточка внутри короче соседних
+  return to ? (
+    <Link to={to} className="block h-full">
+      {card}
+    </Link>
+  ) : (
+    card
+  );
 }
 
 /** Мини-шахта: кабина на высоте процента готовности. */

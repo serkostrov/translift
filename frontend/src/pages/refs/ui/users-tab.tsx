@@ -16,12 +16,11 @@ import { useSaveUser, useUsers } from '@/entities/refs';
 import { errorMessage } from '@/shared/api/http';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Card } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
+import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { FormDialog } from './form-dialog';
 
 export function UsersTab() {
@@ -30,7 +29,7 @@ export function UsersTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
         <p className="text-sm text-muted-foreground">
           У каждого сотрудника свой логин. Бригадира привяжите к бригаде во вкладке «Бригады».
         </p>
@@ -39,30 +38,35 @@ export function UsersTab() {
           Пользователь
         </Button>
       </div>
-      <Card className="py-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ФИО</TableHead>
-              <TableHead>Логин</TableHead>
-              <TableHead>Роль</TableHead>
-              <TableHead>Бригада</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(users.data ?? []).map((u) => (
-              <TableRow key={u.id} className="cursor-pointer" onClick={() => setEditing(u)}>
-                <TableCell className="font-medium">
-                  {u.fullName} {!u.isActive && <Badge variant="outline">отключён</Badge>}
-                </TableCell>
-                <TableCell className="text-muted-foreground">{u.login}</TableCell>
-                <TableCell>{ROLE_LABELS[u.role]}</TableCell>
-                <TableCell>{u.brigade?.name ?? '—'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataList
+        rows={users.data ?? []}
+        rowKey={(u) => u.id}
+        onRowClick={setEditing}
+        columns={[
+          {
+            key: 'name',
+            header: 'ФИО',
+            mobile: 'title',
+            cell: (u) => (
+              <span className="font-medium">
+                {u.fullName} {!u.isActive && <Badge variant="outline">отключён</Badge>}
+              </span>
+            ),
+          },
+          {
+            key: 'role',
+            header: 'Роль',
+            mobile: 'aside',
+            cell: (u) => <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>,
+          },
+          {
+            key: 'login',
+            header: 'Логин',
+            cell: (u) => <span className="text-muted-foreground">{u.login}</span>,
+          },
+          { key: 'brigade', header: 'Бригада', cell: (u) => u.brigade?.name ?? '—' },
+        ]}
+      />
       {editing === 'new' && <CreateUserDialog onClose={() => setEditing(null)} />}
       {editing && editing !== 'new' && (
         <EditUserDialog user={editing} onClose={() => setEditing(null)} />

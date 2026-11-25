@@ -9,12 +9,11 @@ import { useBrigades, useSaveBrigade, useUsers } from '@/entities/refs';
 import { errorMessage } from '@/shared/api/http';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Card } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
+import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { FormDialog } from './form-dialog';
 
 type FormInput = z.input<typeof brigadeUpsertSchema>;
@@ -25,7 +24,7 @@ export function BrigadesTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
         <p className="text-sm text-muted-foreground">
           Бригадир — пользователь с ролью «Бригадир». Он видит в телефоне объекты своей бригады.
         </p>
@@ -34,30 +33,36 @@ export function BrigadesTab() {
           Бригада
         </Button>
       </div>
-      <Card className="py-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Бригада</TableHead>
-              <TableHead>Бригадир</TableHead>
-              <TableHead>Человек</TableHead>
-              <TableHead>Объектов в работе</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(brigades.data ?? []).map((b) => (
-              <TableRow key={b.id} className="cursor-pointer" onClick={() => setEditing(b)}>
-                <TableCell className="font-medium">
-                  {b.name} {!b.isActive && <Badge variant="outline">не активна</Badge>}
-                </TableCell>
-                <TableCell>{b.foreman?.fullName ?? '—'}</TableCell>
-                <TableCell className="tabular-nums">{b.headcount}</TableCell>
-                <TableCell className="tabular-nums">{b.activeObjects}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataList
+        rows={brigades.data ?? []}
+        rowKey={(b) => b.id}
+        onRowClick={setEditing}
+        columns={[
+          {
+            key: 'name',
+            header: 'Бригада',
+            mobile: 'title',
+            cell: (b) => (
+              <span className="font-medium">
+                {b.name} {!b.isActive && <Badge variant="outline">не активна</Badge>}
+              </span>
+            ),
+          },
+          { key: 'foreman', header: 'Бригадир', cell: (b) => b.foreman?.fullName ?? '—' },
+          {
+            key: 'headcount',
+            header: 'Человек',
+            cell: (b) => b.headcount,
+            className: 'tabular-nums',
+          },
+          {
+            key: 'objects',
+            header: 'Объектов в работе',
+            cell: (b) => b.activeObjects,
+            className: 'tabular-nums',
+          },
+        ]}
+      />
       {editing && (
         <BrigadeDialog
           brigade={editing === 'new' ? null : editing}

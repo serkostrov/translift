@@ -15,6 +15,7 @@ import { MarksModule } from './modules/marks/marks.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { ObjectsModule } from './modules/objects/objects.module.js';
 import { RefsModule } from './modules/refs/refs.module.js';
+import { ReportsModule } from './modules/reports/reports.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 
 @Module({
@@ -33,6 +34,7 @@ import { StorageModule } from './modules/storage/storage.module.js';
     NotificationsModule,
     ClaimsModule,
     StorageModule,
+    ReportsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: PrismaExceptionFilter }],
 })

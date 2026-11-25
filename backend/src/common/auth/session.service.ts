@@ -63,6 +63,13 @@ export class SessionService {
     await this.prisma.session.deleteMany({ where: { tokenHash: sha256(token) } });
   }
 
+  /** Завершить все сессии пользователя, кроме текущей. */
+  async revokeOthers(userId: string, currentToken: string) {
+    await this.prisma.session.deleteMany({
+      where: { userId, NOT: { tokenHash: sha256(currentToken) } },
+    });
+  }
+
   async revokeAllForUser(userId: string) {
     await this.prisma.session.deleteMany({ where: { userId } });
   }

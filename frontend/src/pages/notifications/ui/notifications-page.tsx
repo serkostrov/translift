@@ -6,7 +6,7 @@ import {
 } from '@/entities/notification';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
-import { Skeleton } from '@/shared/ui/skeleton';
+import { ListSkeleton } from '@/shared/ui/skeletons';
 
 export function NotificationsPage() {
   const list = useNotifications();
@@ -27,7 +27,7 @@ export function NotificationsPage() {
         Риски по срокам проверяются каждое утро; отметки этапов и рекламации приходят сразу.
       </p>
       {list.isPending ? (
-        <Skeleton className="h-64" />
+        <ListSkeleton rows={6} />
       ) : !list.data?.items.length ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">Уведомлений пока нет</Card>
       ) : (

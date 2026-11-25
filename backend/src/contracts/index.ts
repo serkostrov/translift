@@ -4,4 +4,5 @@ export * from './dashboard.js';
 export * from './marks.js';
 export * from './objects.js';
 export * from './refs.js';
+export * from './reports.js';
 export * from './users.js';

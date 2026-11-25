@@ -23,3 +23,33 @@ export const dateIn = todayIn;
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
 }
+
+/** Смещение часового пояса в минутах для момента времени (например, +180 для Москвы). */
+function tzOffsetMinutes(timeZone: string, at: Date): number {
+  const part = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' })
+    .formatToParts(at)
+    .find((p) => p.type === 'timeZoneName')?.value;
+  const m = part?.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  return sign * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+}
+
+/** Начало дня `YYYY-MM-DD` в часовом поясе заказчика как момент времени. */
+export function startOfDayIn(date: string, timeZone: string): Date {
+  const utcMidnight = new Date(`${date}T00:00:00Z`);
+  return new Date(utcMidnight.getTime() - tzOffsetMinutes(timeZone, utcMidnight) * 60_000);
+}
+
+/** Конец дня (начало следующего) `YYYY-MM-DD` в часовом поясе заказчика. */
+export function endOfDayIn(date: string, timeZone: string): Date {
+  return new Date(startOfDayIn(date, timeZone).getTime() + 86_400_000);
+}
+
+/**
+ * Момент времени, сдвинутый в часовой пояс заказчика — для ячеек Excel:
+ * ExcelJS пишет даты как UTC, без сдвига 15:47 МСК превратилось бы в 12:47.
+ */
+export function shiftToZone(at: Date, timeZone: string): Date {
+  return new Date(at.getTime() + tzOffsetMinutes(timeZone, at) * 60_000);
+}

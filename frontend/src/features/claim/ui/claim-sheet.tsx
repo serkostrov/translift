@@ -19,7 +19,7 @@ import { Button } from '@/shared/ui/button';
 import { Separator } from '@/shared/ui/separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/ui/sheet';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Skeleton } from '@/shared/ui/skeleton';
+import { BlockSkeleton } from '@/shared/ui/skeletons';
 import { Textarea } from '@/shared/ui/textarea';
 
 /** Карточка рекламации: статус, описание, комментарии, фото и документы. */
@@ -43,7 +43,12 @@ function ClaimBody({ id }: { id: string }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  if (claim.isPending) return <Skeleton className="m-4 h-64" />;
+  if (claim.isPending)
+    return (
+      <div className="p-4">
+        <BlockSkeleton lines={5} />
+      </div>
+    );
   if (claim.isError) return <p className="p-4 text-destructive">{errorMessage(claim.error)}</p>;
   const c = claim.data;
 

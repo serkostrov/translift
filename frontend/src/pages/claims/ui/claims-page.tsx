@@ -13,10 +13,10 @@ import { ClaimFormDialog, ClaimSheet } from '@/features/claim';
 import { formatDate } from '@/shared/lib/format';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
+import { DataList } from '@/shared/ui/data-list';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Skeleton } from '@/shared/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { ListSkeleton } from '@/shared/ui/skeletons';
 
 export function ClaimsPage() {
   const user = useCurrentUser();
@@ -79,61 +79,66 @@ export function ClaimsPage() {
       </div>
 
       {claims.isPending ? (
-        <Skeleton className="h-64" />
+        <ListSkeleton rows={6} />
       ) : !claims.data?.length ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">Рекламаций нет</Card>
       ) : (
-        <Card className="py-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>№</TableHead>
-                <TableHead>Объект</TableHead>
-                <TableHead>Дата</TableHead>
-                <TableHead>Поставщик</TableHead>
-                <TableHead>Причина</TableHead>
-                <TableHead>Статус</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {claims.data.map((c) => (
-                <TableRow
-                  key={c.id}
-                  className="cursor-pointer"
-                  onClick={() => setParam('id', c.id)}
-                >
-                  <TableCell className="tabular-nums">{c.number}</TableCell>
-                  <TableCell className="max-w-64 whitespace-normal">
-                    <div className="font-medium">{c.object.shortAddress}</div>
-                    <div className="line-clamp-1 text-xs text-muted-foreground">
-                      {c.description}
-                    </div>
-                  </TableCell>
-                  <TableCell className="tabular-nums">{formatDate(c.date)}</TableCell>
-                  <TableCell>{c.supplier}</TableCell>
-                  <TableCell>{CLAIM_KIND_LABELS[c.kind]}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <ClaimStatusBadge status={c.status} />
-                      {c.commentsCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                          <MessageSquare className="size-3" />
-                          {c.commentsCount}
-                        </span>
-                      )}
-                      {c.filesCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                          <Paperclip className="size-3" />
-                          {c.filesCount}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <DataList
+          rows={claims.data}
+          rowKey={(c) => c.id}
+          onRowClick={(c) => setParam('id', c.id)}
+          columns={[
+            {
+              key: 'object',
+              header: 'Объект',
+              mobile: 'title',
+              cell: (c) => (
+                <div className="max-w-72">
+                  <span className="text-muted-foreground tabular-nums">№{c.number} </span>
+                  <span className="font-medium">{c.object.shortAddress}</span>
+                </div>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'Статус',
+              mobile: 'aside',
+              cell: (c) => <ClaimStatusBadge status={c.status} />,
+            },
+            {
+              key: 'description',
+              header: 'Описание',
+              mobile: 'body',
+              cell: (c) => (
+                <div className="line-clamp-2 max-w-80 text-muted-foreground">{c.description}</div>
+              ),
+            },
+            {
+              key: 'date',
+              header: 'Дата',
+              cell: (c) => formatDate(c.date),
+              className: 'tabular-nums',
+            },
+            { key: 'supplier', header: 'Поставщик', cell: (c) => c.supplier },
+            { key: 'kind', header: 'Причина', cell: (c) => CLAIM_KIND_LABELS[c.kind] },
+            {
+              key: 'activity',
+              header: 'Обсуждение',
+              cell: (c) => (
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-0.5">
+                    <MessageSquare className="size-3" />
+                    {c.commentsCount}
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <Paperclip className="size-3" />
+                    {c.filesCount}
+                  </span>
+                </span>
+              ),
+            },
+          ]}
+        />
       )}
 
       <ClaimSheet id={openId} onClose={() => setParam('id', null)} />

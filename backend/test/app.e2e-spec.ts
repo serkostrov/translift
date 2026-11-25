@@ -54,4 +54,38 @@ describe('Health и авторизация (e2e)', () => {
     const res = await agent.post('/api/users').send({ login: 'a' }).expect(400);
     expect(Array.isArray(res.body.message)).toBe(true);
   });
+
+  it('профиль: правка ФИО и телефона, смена пароля выкидывает другие устройства', async () => {
+    const { agent, user } = await signIn(app, 'FOREMAN');
+    const other = request.agent(app.getHttpServer());
+    await other
+      .post('/api/auth/login')
+      .send({ login: user.login, password: 'test-password-1' })
+      .expect(200);
+
+    const prof = await agent
+      .patch('/api/auth/profile')
+      .send({ fullName: 'Пётр Новиков', phone: '+7 900 000-00-00' })
+      .expect(200);
+    expect(prof.body).toMatchObject({
+      fullName: 'Пётр Новиков',
+      phone: '+7 900 000-00-00',
+      sessions: 2,
+    });
+
+    await agent
+      .post('/api/auth/password')
+      .send({ current: 'wrong', next: 'new-password-1' })
+      .expect(400);
+    await agent
+      .post('/api/auth/password')
+      .send({ current: 'test-password-1', next: 'new-password-1' })
+      .expect(204);
+    await agent.get('/api/auth/me').expect(200);
+    await other.get('/api/auth/me').expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ login: user.login, password: 'new-password-1' })
+      .expect(200);
+  });
 });

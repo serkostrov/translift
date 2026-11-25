@@ -10,6 +10,8 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
   /** Часовой пояс заказчика: от него считаются «сегодня», сроки и просрочки */
   APP_TIMEZONE: z.string().default('Europe/Moscow'),
+  /** Название подрядчика в шапке отчёта генподрядчику */
+  COMPANY_NAME: z.string().default('Транслифт Иваново'),
   DATABASE_URL: z.string().url(),
   S3_ENDPOINT: z.string().url(),
   S3_REGION: z.string().default('us-east-1'),

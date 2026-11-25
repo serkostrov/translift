@@ -1,5 +1,5 @@
 import type { FileDto } from '@contracts';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { formatDateTime } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/utils';
@@ -13,9 +13,22 @@ type ViewerProps = {
   caption?: (p: FileDto) => string;
 };
 
-/** Просмотр фото во весь экран с листанием. */
+/** Имя файла при скачивании: исходное имя или «Транслифт_дата.jpg». */
+function fileName(p: FileDto) {
+  if (p.originalName) return p.originalName;
+  const d = new Date(p.takenAt ?? p.createdAt);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `Транслифт_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.jpg`;
+}
+
+/**
+ * Просмотр фото во весь экран с листанием.
+ * «Скачать» сохраняет файл на телефон, «Открыть» — оригинал в новой вкладке,
+ * где его можно увеличить пальцами.
+ */
 export function PhotoViewer({ photos, index, onIndexChange, caption }: ViewerProps) {
   const photo = index === null ? null : photos[index];
+  const src = photo ? (photo.originalPurged ? (photo.thumbUrl ?? photo.url) : photo.url) : '';
   const go = (d: number) =>
     index !== null && onIndexChange((index + d + photos.length) % photos.length);
 
@@ -26,17 +39,29 @@ export function PhotoViewer({ photos, index, onIndexChange, caption }: ViewerPro
           <>
             <DialogTitle className="sr-only">Фото</DialogTitle>
             <img
-              src={photo.originalPurged ? (photo.thumbUrl ?? photo.url) : photo.url}
+              src={src}
               alt={caption?.(photo) ?? 'Фото'}
               className="max-h-[80dvh] w-full rounded-md bg-black object-contain"
             />
-            <div className="flex items-center gap-2">
-              <DialogDescription className="flex-1 text-xs">
-                {caption?.(photo) ?? formatDateTime(photo.takenAt ?? photo.createdAt)}
-                {photo.originalPurged && ' · оригинал удалён, показано превью'}
-              </DialogDescription>
+            <DialogDescription className="text-xs">
+              {caption?.(photo) ?? formatDateTime(photo.takenAt ?? photo.createdAt)}
+              {photo.originalPurged && ' · оригинал удалён, показано превью'}
+            </DialogDescription>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <a href={src} download={fileName(photo)}>
+                  <Download />
+                  Скачать
+                </a>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <a href={src} target="_blank" rel="noopener">
+                  <ExternalLink />
+                  Открыть
+                </a>
+              </Button>
               {photos.length > 1 && (
-                <>
+                <div className="ml-auto flex items-center gap-2">
                   <Button
                     size="icon"
                     variant="outline"
@@ -56,7 +81,7 @@ export function PhotoViewer({ photos, index, onIndexChange, caption }: ViewerPro
                   >
                     <ChevronRight />
                   </Button>
-                </>
+                </div>
               )}
             </div>
           </>
@@ -70,17 +95,20 @@ export function PhotoViewer({ photos, index, onIndexChange, caption }: ViewerPro
 export function PhotoThumbs({
   photos,
   size = 'md',
+  direction = 'row',
   caption,
 }: {
   photos: FileDto[];
   size?: 'sm' | 'md';
+  /** column — столбиком (например, справа от текста отметки) */
+  direction?: 'row' | 'column';
   caption?: (p: FileDto) => string;
 }) {
   const [index, setIndex] = useState<number | null>(null);
   if (!photos.length) return null;
   return (
     <>
-      <div className="flex flex-wrap gap-1.5">
+      <div className={cn('flex gap-1.5', direction === 'row' ? 'flex-wrap' : 'flex-col')}>
         {photos.map((p, i) => (
           <button
             key={p.id}

@@ -62,3 +62,41 @@ export async function http<T>(
   if (!res.ok) throw new ApiError(res.status, data);
   return data as T;
 }
+
+/** Адрес API со строкой запроса — для скачивания файлов ссылкой (cookie сессии уходят сами). */
+export function apiUrl(
+  path: string,
+  query: Record<string, string | number | boolean | null | undefined> = {},
+) {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+  }
+  return `/api${path}${params.size ? `?${params}` : ''}`;
+}
+
+/**
+ * Скачать файл с API. Через fetch, а не ссылкой: так ошибку (403, 404) можно показать
+ * пользователю, а не открывать страницу с JSON.
+ */
+export async function download(url: string) {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) {
+    const body = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
+    throw new ApiError(res.status, body);
+  }
+  const name = decodeURIComponent(
+    res.headers.get('content-disposition')?.match(/filename\*=UTF-8''([^;]+)/)?.[1] ??
+      'report.xlsx',
+  );
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 1000);
+}

@@ -10,11 +10,10 @@ import { errorMessage } from '@/shared/api/http';
 import { formatDate } from '@/shared/lib/format';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Card } from '@/shared/ui/card';
+import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { FormDialog } from './form-dialog';
 
 type FormInput = z.input<typeof contractUpsertSchema> & { newCustomer?: string };
@@ -25,7 +24,7 @@ export function ContractsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
         <p className="text-sm text-muted-foreground">
           Договоры с заказчиками и генподрядчиками. Ответственный и ссылка на фото попадают в отчёт.
         </p>
@@ -34,34 +33,37 @@ export function ContractsTab() {
           Договор
         </Button>
       </div>
-      <Card className="py-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Договор</TableHead>
-              <TableHead>Заказчик</TableHead>
-              <TableHead>Ответственный в отчёте</TableHead>
-              <TableHead>Объектов</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(contracts.data ?? []).map((c) => (
-              <TableRow key={c.id} className="cursor-pointer" onClick={() => setEditing(c)}>
-                <TableCell className="font-medium">
-                  № {c.number}
-                  {c.date && (
-                    <span className="text-muted-foreground"> от {formatDate(c.date)}</span>
-                  )}{' '}
-                  {!c.isActive && <Badge variant="outline">закрыт</Badge>}
-                </TableCell>
-                <TableCell>{c.customer.name}</TableCell>
-                <TableCell>{c.responsible ?? '—'}</TableCell>
-                <TableCell className="tabular-nums">{c.objectsCount}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataList
+        rows={contracts.data ?? []}
+        rowKey={(c) => c.id}
+        onRowClick={setEditing}
+        columns={[
+          {
+            key: 'number',
+            header: 'Договор',
+            mobile: 'title',
+            cell: (c) => (
+              <span className="font-medium">
+                № {c.number}
+                {c.date && <span className="text-muted-foreground"> от {formatDate(c.date)}</span>}{' '}
+                {!c.isActive && <Badge variant="outline">закрыт</Badge>}
+              </span>
+            ),
+          },
+          { key: 'customer', header: 'Заказчик', cell: (c) => c.customer.name },
+          {
+            key: 'responsible',
+            header: 'Ответственный в отчёте',
+            cell: (c) => c.responsible ?? '—',
+          },
+          {
+            key: 'objects',
+            header: 'Объектов',
+            cell: (c) => c.objectsCount,
+            className: 'tabular-nums',
+          },
+        ]}
+      />
       {editing && (
         <ContractDialog
           contract={editing === 'new' ? null : editing}

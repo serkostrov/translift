@@ -2,7 +2,7 @@ import type { Role } from '@contracts';
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { hasRole, useSession } from '@/entities/session';
-import { Skeleton } from '@/shared/ui/skeleton';
+import { ElevatorLoader } from '@/shared/ui/elevator-loader';
 
 /** Пускает только вошедших; с `roles` — только эти роли (остальных — на главную). */
 export function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
@@ -11,9 +11,8 @@ export function RequireAuth({ children, roles }: { children: ReactNode; roles?: 
 
   if (session.isPending) {
     return (
-      <div className="space-y-3 p-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-40 w-full" />
+      <div className="flex min-h-dvh items-center justify-center">
+        <ElevatorLoader />
       </div>
     );
   }

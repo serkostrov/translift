@@ -28,6 +28,7 @@ import { FinanceCard } from '@/features/finance';
 import { MarkStageDrawer } from '@/features/mark-stage';
 import { ObjectDatesDialog } from '@/features/object-dates';
 import { ObjectFormDialog } from '@/features/object-form';
+import { ObjectReportDialog } from '@/features/object-report';
 import { errorMessage } from '@/shared/api/http';
 import { formatDate, formatDateTime, formatDaysLeft } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/utils';
@@ -45,14 +46,14 @@ import {
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
-import { Skeleton } from '@/shared/ui/skeleton';
+import { CardsSkeleton, ListSkeleton, ObjectSkeleton, StagesSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 export function ObjectPage() {
   const { id = '' } = useParams();
   const object = useObject(id);
 
-  if (object.isPending) return <Skeleton className="h-96 w-full" />;
+  if (object.isPending) return <ObjectSkeleton />;
   if (object.isError) return <p className="text-destructive">{errorMessage(object.error)}</p>;
   return <ObjectView object={object.data} />;
 }
@@ -112,14 +113,17 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
                 <FlagBadge key={f.code} flag={f} />
               ))}
             </div>
-            <div className="flex flex-wrap gap-2">
-              {canMark && markButton(isForeman ? 'hidden md:inline-flex' : 'w-full sm:w-auto')}
+            {/* Телефон: главное действие на всю ширину, остальные — ровная сетка 2×2.
+                Широкий экран: всё в один ряд. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              {canMark &&
+                markButton(isForeman ? 'hidden md:inline-flex' : 'h-9 w-full sm:h-8 sm:w-auto')}
               {canEdit && (
-                <>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   <ObjectFormDialog
                     object={o}
                     trigger={
-                      <Button variant="outline">
+                      <Button variant="outline" className="w-full sm:w-auto">
                         <Pencil />
                         Изменить
                       </Button>
@@ -128,36 +132,47 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
                   <ObjectDatesDialog
                     object={o}
                     trigger={
-                      <Button variant="outline">
+                      <Button variant="outline" className="w-full sm:w-auto">
                         <CalendarDays />
-                        Поставка и даты
+                        Поставка, даты
                       </Button>
                     }
                   />
-                  <Button variant="ghost" onClick={toggleArchive} disabled={update.isPending}>
+                  <ObjectReportDialog
+                    objectId={o.id}
+                    openedDate={o.openedDate}
+                    triggerClassName="w-full sm:w-auto"
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={toggleArchive}
+                    disabled={update.isPending}
+                  >
                     {o.archived ? <ArchiveRestore /> : <Archive />}
                     {o.archived ? 'Из архива' : 'В архив'}
                   </Button>
-                </>
+                </div>
               )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-5xl font-semibold tabular-nums">{o.percent}%</div>
-            <div className="text-sm text-muted-foreground">
-              {o.currentStage?.shortName ?? 'Этапы не отмечены'}
+          {/* Телефон — строка на всю ширину: крупный процент слева, этап и срок справа.
+              Широкий экран — колонка справа, всё по правому краю. */}
+          <div className="flex w-full items-center justify-between gap-4 border-t pt-4 sm:w-auto sm:flex-col sm:items-end sm:justify-start sm:gap-2 sm:border-0 sm:pt-0">
+            <div className="shrink-0 text-6xl font-semibold leading-none tabular-nums sm:text-5xl">
+              {o.percent}%
             </div>
-            {o.deadline && (
-              <div
-                className={cn(
-                  'mt-2 text-sm',
-                  o.isRisk ? 'text-destructive' : 'text-muted-foreground',
-                )}
-              >
-                Срок {formatDate(o.deadline)}
-                {o.state !== 'DONE' && <div>{formatDaysLeft(o.daysLeft)}</div>}
+            <div className="min-w-0 space-y-1 text-right text-sm">
+              <div className="text-foreground/80">
+                {o.currentStage?.shortName ?? 'Этапы не отмечены'}
               </div>
-            )}
+              {o.deadline && (
+                <div className={o.isRisk ? 'text-destructive' : 'text-muted-foreground'}>
+                  <div>Срок {formatDate(o.deadline)}</div>
+                  {o.state !== 'DONE' && <div>{formatDaysLeft(o.daysLeft)}</div>}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -250,7 +265,7 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
       </CardHeader>
       <CardContent>
         {templates.isPending || marks.isPending ? (
-          <Skeleton className="h-64" />
+          <StagesSkeleton />
         ) : (
           <ol>
             {stages.map((s) => {
@@ -323,7 +338,7 @@ function ObjectClaims({ objectId }: { objectId: string }) {
       </CardHeader>
       <CardContent>
         {claims.isPending ? (
-          <Skeleton className="h-24" />
+          <ListSkeleton rows={2} />
         ) : !claims.data?.length ? (
           <p className="text-sm text-muted-foreground">
             Брак, недокомплект или несоответствие поставки — заведите рекламацию
@@ -369,7 +384,7 @@ function PhotosCard({ objectId }: { objectId: string }) {
     <Card>
       <CardContent>
         {photos.isPending ? (
-          <Skeleton className="h-40" />
+          <CardsSkeleton count={3} />
         ) : !photos.data?.length ? (
           <p className="text-sm text-muted-foreground">
             Фото появятся, когда бригадир отметит первый этап
@@ -422,7 +437,7 @@ function HistoryCard({ objectId }: { objectId: string }) {
     <Card>
       <CardContent>
         {history.isPending ? (
-          <Skeleton className="h-32" />
+          <ListSkeleton rows={4} />
         ) : !history.data?.length ? (
           <p className="text-sm text-muted-foreground">Записей пока нет</p>
         ) : (

@@ -1,13 +1,29 @@
-import { Link } from 'react-router';
+import { ArrowLeft, House } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
 import { Button } from '@/shared/ui/button';
+import { ElevatorScene } from '@/shared/ui/elevator-scene';
 
 export function NotFoundPage() {
+  const navigate = useNavigate();
   return (
-    <div className="space-y-3 py-10 text-center">
-      <h1 className="text-xl font-semibold">Страница не найдена</h1>
-      <Button asChild variant="outline">
-        <Link to="/">На сводку</Link>
-      </Button>
-    </div>
+    <ElevatorScene
+      display="404"
+      title="Такого этажа нет"
+      text="Лифт доехал, но страницы по этому адресу не существует. Возможно, ссылка устарела или объект удалили."
+      actions={
+        <>
+          <Button asChild>
+            <Link to="/">
+              <House />
+              На главную
+            </Link>
+          </Button>
+          <Button variant="outline" onClick={() => navigate(-1)}>
+            <ArrowLeft />
+            Назад
+          </Button>
+        </>
+      }
+    />
   );
 }

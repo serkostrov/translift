@@ -7,8 +7,7 @@ import { errorMessage } from '@/shared/api/http';
 import { Card } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
 import { Input } from '@/shared/ui/input';
-import { Skeleton } from '@/shared/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { StagesSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 /** Шаблоны этапов: правка коротких названий, процентов и флага фото — без программиста. */
@@ -17,7 +16,7 @@ export function TemplatesTab() {
   const user = useCurrentUser();
   const canEdit = hasRole(user, 'ADMIN');
 
-  if (templates.isPending) return <Skeleton className="h-96" />;
+  if (templates.isPending) return <StagesSkeleton count={14} />;
   const list = templates.data ?? [];
 
   return (
@@ -36,23 +35,19 @@ export function TemplatesTab() {
               ? 'Изменения сохраняются сразу и пересчитывают проценты всех объектов этого типа.'
               : 'Править этапы может администратор.'}
           </p>
-          <Card className="py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">№</TableHead>
-                  <TableHead>Как в отчёте генподрядчику</TableHead>
-                  <TableHead>Короткое название</TableHead>
-                  <TableHead className="w-24">%</TableHead>
-                  <TableHead className="w-16">Фото</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {t.stages.map((s) => (
-                  <StageRow key={s.id} stage={s} canEdit={canEdit} />
-                ))}
-              </TableBody>
-            </Table>
+          <Card className="gap-0 py-0">
+            <div className="hidden gap-3 border-b px-4 py-2 text-sm font-medium text-muted-foreground md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_14rem_6rem_4rem]">
+              <span>№</span>
+              <span>Как в отчёте генподрядчику</span>
+              <span>Короткое название</span>
+              <span>%</span>
+              <span>Фото</span>
+            </div>
+            <div className="divide-y">
+              {t.stages.map((s) => (
+                <StageRow key={s.id} stage={s} canEdit={canEdit} />
+              ))}
+            </div>
           </Card>
         </TabsContent>
       ))}
@@ -77,14 +72,14 @@ function StageRow({ stage, canEdit }: { stage: TemplateStageDto; canEdit: boolea
       },
     );
 
+  // Десктоп — строка-сетка; телефон — карточка: номер и полное название сверху, поля ниже
   return (
-    <TableRow>
-      <TableCell className="tabular-nums text-muted-foreground">{stage.order}</TableCell>
-      <TableCell className="max-w-72 whitespace-normal text-sm">{stage.fullName}</TableCell>
-      <TableCell>
+    <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-3 md:grid-cols-[2.5rem_minmax(0,1fr)_14rem_6rem_4rem]">
+      <span className="text-sm tabular-nums text-muted-foreground">{stage.order}</span>
+      <span className="text-sm">{stage.fullName}</span>
+      <div className="col-start-2 md:col-start-auto">
         {canEdit ? (
           <Input
-            className="min-w-44"
             value={shortName}
             aria-label={`Короткое название этапа ${stage.order}`}
             onChange={(e) => setShortName(e.target.value)}
@@ -94,34 +89,42 @@ function StageRow({ stage, canEdit }: { stage: TemplateStageDto; canEdit: boolea
             }
           />
         ) : (
-          stage.shortName
+          <span className="text-sm">{stage.shortName}</span>
         )}
-      </TableCell>
-      <TableCell>
-        {canEdit ? (
-          <Input
-            type="number"
-            inputMode="numeric"
-            value={percent}
-            aria-label={`Процент этапа ${stage.order}`}
-            onChange={(e) => setPercent(e.target.value)}
-            onBlur={() =>
-              Number(percent) !== stage.percent &&
-              commit({ percent: Number(percent) }, () => setPercent(String(stage.percent)))
-            }
+      </div>
+      <div className="col-start-2 flex items-center gap-4 md:contents">
+        <div className="flex items-center gap-2 md:block">
+          <span className="text-xs text-muted-foreground md:hidden">%</span>
+          {canEdit ? (
+            <Input
+              className="w-20 md:w-full"
+              type="number"
+              inputMode="numeric"
+              value={percent}
+              aria-label={`Процент этапа ${stage.order}`}
+              onChange={(e) => setPercent(e.target.value)}
+              onBlur={() =>
+                Number(percent) !== stage.percent &&
+                commit({ percent: Number(percent) }, () => setPercent(String(stage.percent)))
+              }
+            />
+          ) : (
+            <span className="text-sm tabular-nums">{stage.percent}%</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id={`photo-${stage.id}`}
+            checked={stage.photoRequired}
+            disabled={!canEdit}
+            aria-label={`Фото обязательно на этапе ${stage.order}`}
+            onCheckedChange={(v) => commit({ photoRequired: v === true }, () => undefined)}
           />
-        ) : (
-          `${stage.percent}%`
-        )}
-      </TableCell>
-      <TableCell>
-        <Checkbox
-          checked={stage.photoRequired}
-          disabled={!canEdit}
-          aria-label={`Фото обязательно на этапе ${stage.order}`}
-          onCheckedChange={(v) => commit({ photoRequired: v === true }, () => undefined)}
-        />
-      </TableCell>
-    </TableRow>
+          <label htmlFor={`photo-${stage.id}`} className="text-xs text-muted-foreground md:hidden">
+            фото обязательно
+          </label>
+        </div>
+      </div>
+    </div>
   );
 }

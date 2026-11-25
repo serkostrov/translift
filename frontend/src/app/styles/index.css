@@ -128,3 +128,67 @@
     @apply font-sans;
   }
 }
+
+/* Документ не прокручивается — прокрутка только внутри блока контента (см. AppLayout) */
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
+}
+
+/* Кабина, застрявшая между этажами (страница ошибки) */
+@keyframes elevator-shake {
+  0%,
+  70%,
+  100% {
+    transform: translateY(0);
+  }
+  74% {
+    transform: translateY(-3px);
+  }
+  78% {
+    transform: translateY(2px);
+  }
+  82% {
+    transform: translateY(-1px);
+  }
+  86% {
+    transform: translateY(0);
+  }
+}
+
+/* Лоадер: лента этажей едет вниз на один этаж и начинается заново (лифт «едет вверх») */
+@keyframes elevator-floors {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(var(--floor-h));
+  }
+}
+
+/* Лоадер: кабина едва заметно подрагивает в движении */
+@keyframes elevator-hum {
+  0%,
+  100% {
+    margin-top: 0;
+  }
+  50% {
+    margin-top: 1px;
+  }
+}
+
+/* Фирменные цвета «Транслифт» (логотип, вариант Б): стальной блок и голубая «Т».
+   Используются в лоадере, на страницах 404/ошибки, в табло. Меняются здесь в одном месте. */
+:root {
+  --brand: #5aaee8; /* голубая «Т», кабина лифта */
+  --brand-ink: #2f3742; /* тёмная сталь: фон знака, табло, двери кабины */
+  --brand-steel: #55616f; /* светлая сталь: верх градиента */
+}
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-steel: var(--brand-steel);
+}

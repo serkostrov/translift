@@ -22,11 +22,11 @@ import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
+import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Progress } from '@/shared/ui/progress';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Skeleton } from '@/shared/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { DashboardSkeleton } from '@/shared/ui/skeletons';
 
 const MONTHS: Record<string, string> = {
   '01': 'янв',
@@ -49,7 +49,7 @@ export function StoragePage() {
     queryFn: () => http<StorageStatsDto>('/storage/stats'),
   });
 
-  if (stats.isPending) return <Skeleton className="h-[60vh]" />;
+  if (stats.isPending) return <DashboardSkeleton />;
   if (stats.isError) return <p className="text-destructive">{errorMessage(stats.error)}</p>;
   const s = stats.data;
   const disk = s.disk;
@@ -100,7 +100,7 @@ export function StoragePage() {
 
       <CleanupCard stats={s} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Card>
           <CardHeader>
             <CardTitle>Файлы по месяцам загрузки</CardTitle>
@@ -135,61 +135,67 @@ export function StoragePage() {
           </CardContent>
         </Card>
 
-        <Card className="pb-0">
-          <CardHeader>
-            <CardTitle>Больше всего места</CardTitle>
-          </CardHeader>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Объект</TableHead>
-                <TableHead>Файлов</TableHead>
-                <TableHead className="text-right">Объём</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {s.files.topObjects.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell>
+        <div className="space-y-2">
+          <h2 className="px-1 font-semibold">Больше всего места</h2>
+          <DataList
+            rows={s.files.topObjects}
+            rowKey={(o) => o.id}
+            empty={<Card className="p-6 text-sm text-muted-foreground">Файлов пока нет</Card>}
+            columns={[
+              {
+                key: 'object',
+                header: 'Объект',
+                mobile: 'title',
+                cell: (o) => (
+                  <>
                     <Link to={`/objects/${o.id}`} className="hover:underline">
                       {o.shortAddress}
                     </Link>{' '}
                     {o.done && <Badge variant="outline">сдан</Badge>}
-                  </TableCell>
-                  <TableCell className="tabular-nums">{o.count}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatBytes(o.bytes)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+                  </>
+                ),
+              },
+              {
+                key: 'bytes',
+                header: 'Объём',
+                mobile: 'aside',
+                cell: (o) => formatBytes(o.bytes),
+                className: 'tabular-nums',
+              },
+              { key: 'count', header: 'Файлов', cell: (o) => o.count, className: 'tabular-nums' },
+            ]}
+          />
+        </div>
       </div>
 
-      <Card className="pb-0">
-        <CardHeader>
-          <CardTitle>Таблицы базы данных</CardTitle>
-        </CardHeader>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Таблица</TableHead>
-              <TableHead>Строк</TableHead>
-              <TableHead className="text-right">Объём</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {s.database.tables.map((t) => (
-              <TableRow key={t.name}>
-                <TableCell className="font-mono text-xs">{t.name}</TableCell>
-                <TableCell className="tabular-nums">{t.rows.toLocaleString('ru-RU')}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatBytes(t.sizeBytes)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <div className="space-y-2">
+        <h2 className="px-1 font-semibold">Таблицы базы данных</h2>
+        <DataList
+          rows={s.database.tables}
+          rowKey={(t) => t.name}
+          columns={[
+            {
+              key: 'name',
+              header: 'Таблица',
+              mobile: 'title',
+              cell: (t) => <span className="font-mono text-xs">{t.name}</span>,
+            },
+            {
+              key: 'size',
+              header: 'Объём',
+              mobile: 'aside',
+              cell: (t) => formatBytes(t.sizeBytes),
+              className: 'tabular-nums',
+            },
+            {
+              key: 'rows',
+              header: 'Строк',
+              cell: (t) => t.rows.toLocaleString('ru-RU'),
+              className: 'tabular-nums',
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -330,7 +336,9 @@ function CleanupCard({ stats }: { stats: StorageStatsDto }) {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Отмена</AlertDialogCancel>
-                <AlertDialogAction onClick={() => run.mutate(input)}>Удалить</AlertDialogAction>
+                <AlertDialogAction variant="danger" onClick={() => run.mutate(input)}>
+                  Удалить
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

@@ -356,7 +356,8 @@ export class ObjectsService {
       const photos = Number(changes.photos ?? 0);
       return `Отметил этап «${stage}» — ${percent}%${photos ? `, фото: ${photos}` : ''}`;
     }
-    if (action === 'claim' && changes) return String(changes.text ?? 'Рекламация');
+    if ((action === 'claim' || action === 'import') && changes)
+      return String(changes.text ?? action);
     if (action === 'finance' && changes) {
       const labels: Record<string, string> = {
         contractNumber: 'номер договора',

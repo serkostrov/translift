@@ -9,6 +9,7 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
+import { Logo } from '@/shared/ui/logo';
 
 export function LoginPage() {
   const session = useSession();
@@ -33,8 +34,9 @@ export function LoginPage() {
       </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">Транслифт</CardTitle>
-          <CardDescription>Контроль монтажа лифтов</CardDescription>
+          <CardTitle className="sr-only">Транслифт</CardTitle>
+          <CardDescription className="sr-only">Контроль монтажа лифтов</CardDescription>
+          <Logo className="[&_svg]:size-11 [&_div:first-child]:text-lg" />
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} noValidate>

@@ -19,7 +19,7 @@ import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { Skeleton } from '@/shared/ui/skeleton';
+import { ListSkeleton } from '@/shared/ui/skeletons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 
 const STATE_OPTIONS = [
@@ -104,7 +104,7 @@ export function ObjectsPage() {
       </div>
 
       {objects.isPending ? (
-        <Skeleton className="h-64 w-full" />
+        <ListSkeleton rows={8} />
       ) : objects.isError ? (
         <p className="text-destructive">Не удалось загрузить объекты</p>
       ) : rows.length === 0 ? (
@@ -216,8 +216,8 @@ function Deadline({ object: o }: { object: ObjectListItem }) {
 
 function ObjectCard({ object: o }: { object: ObjectListItem }) {
   return (
-    <Link to={`/objects/${o.id}`} className="block">
-      <Card className="gap-2 p-4">
+    <Link to={`/objects/${o.id}`} className="block h-full">
+      <Card className="h-full gap-2 p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="font-medium">{o.shortAddress}</div>
           <ObjectStateBadge state={o.state} />

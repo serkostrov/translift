@@ -1,72 +1,142 @@
+import type { Role } from '@contracts';
+import { type ComponentType, lazy, type ReactNode, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { hasRole, useCurrentUser } from '@/entities/session';
-import { ClaimsPage } from '@/pages/claims';
-import { DashboardPage } from '@/pages/dashboard';
-import { ForemanPage } from '@/pages/foreman';
+import { ErrorPage } from '@/pages/error';
 import { LoginPage } from '@/pages/login';
 import { NotFoundPage } from '@/pages/not-found';
-import { NotificationsPage } from '@/pages/notifications';
-import { ObjectPage } from '@/pages/object';
-import { ObjectsPage } from '@/pages/objects';
-import { RefsPage } from '@/pages/refs';
-import { StoragePage } from '@/pages/storage';
+import { ElevatorLoader } from '@/shared/ui/elevator-loader';
 import { AppLayout } from './layout/app-layout';
 import { RequireAuth } from './layout/require-auth';
+
+/**
+ * Страницы грузятся по требованию: бригадиру с телефона не нужно скачивать
+ * сводку, справочники и отчёты. Пока кусок грузится — едущий лифт.
+ */
+function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy<ComponentType>(() => load().then((m) => ({ default: m[name] })));
+}
+
+const DashboardPage = page(() => import('@/pages/dashboard'), 'DashboardPage');
+const ObjectsPage = page(() => import('@/pages/objects'), 'ObjectsPage');
+const ObjectPage = page(() => import('@/pages/object'), 'ObjectPage');
+const ForemanPage = page(() => import('@/pages/foreman'), 'ForemanPage');
+const ClaimsPage = page(() => import('@/pages/claims'), 'ClaimsPage');
+const ReportsPage = page(() => import('@/pages/reports'), 'ReportsPage');
+const NotificationsPage = page(() => import('@/pages/notifications'), 'NotificationsPage');
+const ProfilePage = page(() => import('@/pages/profile'), 'ProfilePage');
+const RefsPage = page(() => import('@/pages/refs'), 'RefsPage');
+const StoragePage = page(() => import('@/pages/storage'), 'StoragePage');
+
+function Lazy({ children, roles }: { children: ReactNode; roles?: Role[] }) {
+  const content = <Suspense fallback={<ElevatorLoader />}>{children}</Suspense>;
+  return roles ? <RequireAuth roles={roles}>{content}</RequireAuth> : content;
+}
 
 /** Бригадира с главной — сразу в его объекты. */
 function Home() {
   const user = useCurrentUser();
-  return hasRole(user, 'FOREMAN') ? <Navigate to="/foreman" replace /> : <DashboardPage />;
+  return hasRole(user, 'FOREMAN') ? (
+    <Navigate to="/foreman" replace />
+  ) : (
+    <Lazy>
+      <DashboardPage />
+    </Lazy>
+  );
 }
 
-const OFFICE = ['ADMIN', 'MANAGER', 'FINANCE'] as const;
+const OFFICE: Role[] = ['ADMIN', 'MANAGER', 'FINANCE'];
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <ErrorPage /> },
   {
     element: (
       <RequireAuth>
         <AppLayout />
       </RequireAuth>
     ),
+    errorElement: <ErrorPage />,
     children: [
-      { index: true, element: <Home /> },
       {
-        path: 'objects',
-        element: (
-          <RequireAuth roles={[...OFFICE]}>
-            <ObjectsPage />
-          </RequireAuth>
-        ),
+        // Ошибка внутри страницы не роняет меню: показываем её в области контента
+        errorElement: <ErrorPage />,
+        children: [
+          { index: true, element: <Home /> },
+          {
+            path: 'objects',
+            element: (
+              <Lazy roles={OFFICE}>
+                <ObjectsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'objects/:id',
+            element: (
+              <Lazy>
+                <ObjectPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'foreman',
+            element: (
+              <Lazy>
+                <ForemanPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'notifications',
+            element: (
+              <Lazy>
+                <NotificationsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'profile',
+            element: (
+              <Lazy>
+                <ProfilePage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'claims',
+            element: (
+              <Lazy roles={OFFICE}>
+                <ClaimsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'reports',
+            element: (
+              <Lazy roles={OFFICE}>
+                <ReportsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'refs',
+            element: (
+              <Lazy roles={['ADMIN', 'MANAGER']}>
+                <RefsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'storage',
+            element: (
+              <Lazy roles={['ADMIN']}>
+                <StoragePage />
+              </Lazy>
+            ),
+          },
+          { path: '*', element: <NotFoundPage /> },
+        ],
       },
-      { path: 'objects/:id', element: <ObjectPage /> },
-      { path: 'foreman', element: <ForemanPage /> },
-      { path: 'notifications', element: <NotificationsPage /> },
-      {
-        path: 'claims',
-        element: (
-          <RequireAuth roles={[...OFFICE]}>
-            <ClaimsPage />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: 'refs',
-        element: (
-          <RequireAuth roles={['ADMIN', 'MANAGER']}>
-            <RefsPage />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: 'storage',
-        element: (
-          <RequireAuth roles={['ADMIN']}>
-            <StoragePage />
-          </RequireAuth>
-        ),
-      },
-      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ]);
