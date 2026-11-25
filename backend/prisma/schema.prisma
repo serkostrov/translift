@@ -1,0 +1,351 @@
+// Модель данных «Транслифт». Черновик до ответов заказчика — см. docs/PLAN.md, «Открытые вопросы».
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Пользователи и доступ ----------
+
+enum Role {
+  ADMIN // руководитель / администратор
+  MANAGER // руководитель без прав на справочники
+  FOREMAN // бригадир
+  FINANCE // сотрудник с доступом к финансовым полям
+}
+
+model User {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  login        String   @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  brigadeId String?  @db.Uuid
+  brigade   Brigade? @relation("BrigadeMembers", fields: [brigadeId], references: [id])
+
+  ledBrigades   Brigade[]      @relation("BrigadeForeman")
+  sessions      Session[]
+  stageMarks    StageMark[]
+  files         File[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  claimComments ClaimComment[]
+}
+
+model Session {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  tokenHash  String   @unique
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  expiresAt  DateTime @db.Timestamptz
+  lastSeenAt DateTime @default(now()) @db.Timestamptz
+  userAgent  String?
+
+  @@index([userId])
+}
+
+// ---------- Справочники ----------
+
+model Brigade {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  name      String
+  headcount Int          @default(1)
+  isActive  Boolean      @default(true)
+  foremanId String?      @db.Uuid
+  foreman   User?        @relation("BrigadeForeman", fields: [foremanId], references: [id])
+  members   User[]       @relation("BrigadeMembers")
+  objects   LiftObject[]
+  createdAt DateTime     @default(now()) @db.Timestamptz
+  updatedAt DateTime     @updatedAt @db.Timestamptz
+}
+
+/// Заказчик или генподрядчик
+model Customer {
+  id        String     @id @default(uuid(7)) @db.Uuid
+  name      String
+  inn       String?
+  contracts Contract[]
+  createdAt DateTime   @default(now()) @db.Timestamptz
+}
+
+model Contract {
+  id              String       @id @default(uuid(7)) @db.Uuid
+  number          String
+  date            DateTime?    @db.Date
+  customerId      String       @db.Uuid
+  customer        Customer     @relation(fields: [customerId], references: [id])
+  /// Ответственный, который указывается в отчёте генподрядчику
+  responsible     String?
+  /// Ссылка для фотоотчётов в отчёте генподрядчику
+  photoReportLink String?
+  isActive        Boolean      @default(true)
+  objects         LiftObject[]
+  createdAt       DateTime     @default(now()) @db.Timestamptz
+}
+
+enum WorkType {
+  REPLACEMENT // замена лифта в действующем здании
+  NEW_BUILDING // монтаж в новостройке
+}
+
+model StageTemplate {
+  id       String          @id @default(uuid(7)) @db.Uuid
+  workType WorkType        @unique
+  name     String
+  stages   TemplateStage[]
+  objects  LiftObject[]
+}
+
+model TemplateStage {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  templateId    String        @db.Uuid
+  template      StageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  order         Int
+  /// Полное наименование — как в отчёте генподрядчику
+  fullName      String
+  /// Короткое наименование для интерфейса
+  shortName     String
+  /// Контрольный процент готовности после этапа
+  percent       Int
+  photoRequired Boolean       @default(true)
+  /// Контрольная дата, которая проставляется при отметке этапа
+  setsDate      ControlDate?
+
+  marks          StageMark[]
+  currentObjects LiftObject[] @relation("CurrentStage")
+
+  @@unique([templateId, order])
+}
+
+enum ControlDate {
+  PTO
+  DECLARATION
+  COMMISSIONING // ввод в эксплуатацию
+  ACCEPTANCE // комиссионная приёмка
+  KS // КС-2, КС-3
+}
+
+// ---------- Объекты ----------
+
+enum DeliveryStatus {
+  NOT_ORDERED
+  ORDERED
+  DELIVERED
+}
+
+model LiftObject {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  address      String
+  shortAddress String
+  floors       Int?
+  capacityKg   Int?
+  /// Свободные сведения о лифте: модель, завод, зав. номер
+  liftInfo     String?
+
+  templateId String        @db.Uuid
+  template   StageTemplate @relation(fields: [templateId], references: [id])
+  contractId String?       @db.Uuid
+  contract   Contract?     @relation(fields: [contractId], references: [id])
+  brigadeId  String?       @db.Uuid
+  brigade    Brigade?      @relation(fields: [brigadeId], references: [id])
+
+  currentStageId String?        @db.Uuid
+  currentStage   TemplateStage? @relation("CurrentStage", fields: [currentStageId], references: [id])
+
+  deadline DateTime? @db.Date // срок по договору
+
+  deliveryStatus      DeliveryStatus @default(NOT_ORDERED)
+  deliveryPlannedDate DateTime?      @db.Date
+  deliveryActualDate  DateTime?      @db.Date
+
+  // Плановые и фактические контрольные даты
+  plannedStartDate DateTime? @db.Date
+  openedDate       DateTime? @db.Date
+  ptoDate          DateTime? @db.Date
+  declarationDate  DateTime? @db.Date
+  commissionedDate DateTime? @db.Date
+  acceptanceDate   DateTime? @db.Date
+  ksDate           DateTime? @db.Date
+
+  archivedAt DateTime? @db.Timestamptz
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+
+  marks         StageMark[]
+  files         File[]
+  claims        Claim[]
+  finance       ObjectFinance?
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@index([brigadeId])
+  @@index([contractId])
+}
+
+/// Отметка выполнения этапа. Не удаляется: отмена — флаг + запись в журнале.
+model StageMark {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  objectId    String        @db.Uuid
+  object      LiftObject    @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  stageId     String        @db.Uuid
+  stage       TemplateStage @relation(fields: [stageId], references: [id])
+  performedAt DateTime      @db.Timestamptz
+  authorId    String        @db.Uuid
+  author      User          @relation(fields: [authorId], references: [id])
+  comment     String?
+  revokedAt   DateTime?     @db.Timestamptz
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  photos      File[]
+
+  @@index([objectId, performedAt])
+}
+
+// ---------- Файлы (S3) ----------
+
+enum FileKind {
+  PHOTO
+  DOCUMENT
+}
+
+model File {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  kind             FileKind
+  key              String    @unique // ключ оригинала в S3
+  thumbKey         String? // ключ превью
+  originalName     String?
+  mime             String
+  size             BigInt // байт, оригинал
+  thumbSize        BigInt?
+  /// Название документа (Акт ПТО, Декларация, КС-2…)
+  title            String?
+  takenAt          DateTime? @db.Timestamptz
+  uploadedById     String?   @db.Uuid
+  uploadedBy       User?     @relation(fields: [uploadedById], references: [id])
+  createdAt        DateTime  @default(now()) @db.Timestamptz
+  /// Оригинал удалён при очистке, осталось только превью
+  originalPurgedAt DateTime? @db.Timestamptz
+
+  objectId    String?     @db.Uuid
+  object      LiftObject? @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  stageMarkId String?     @db.Uuid
+  stageMark   StageMark?  @relation(fields: [stageMarkId], references: [id], onDelete: SetNull)
+  claimId     String?     @db.Uuid
+  claim       Claim?      @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([objectId])
+  @@index([kind, createdAt])
+}
+
+// ---------- Рекламации ----------
+
+enum ClaimKind {
+  DEFECT // заводской брак
+  INCOMPLETE // недокомплект
+  MISMATCH // несоответствие поставки
+}
+
+enum ClaimStatus {
+  NEW
+  IN_REVIEW
+  ACCEPTED
+  REJECTED
+  RESOLVED
+}
+
+model Claim {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  number      Int            @unique @default(autoincrement())
+  objectId    String         @db.Uuid
+  object      LiftObject     @relation(fields: [objectId], references: [id])
+  date        DateTime       @db.Date
+  supplier    String
+  kind        ClaimKind
+  description String
+  status      ClaimStatus    @default(NEW)
+  createdAt   DateTime       @default(now()) @db.Timestamptz
+  updatedAt   DateTime       @updatedAt @db.Timestamptz
+  comments    ClaimComment[]
+  files       File[]
+
+  @@index([objectId])
+  @@index([status])
+}
+
+model ClaimComment {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  claimId   String   @db.Uuid
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  authorId  String   @db.Uuid
+  author    User     @relation(fields: [authorId], references: [id])
+  text      String
+  createdAt DateTime @default(now()) @db.Timestamptz
+}
+
+// ---------- Финансы ----------
+
+/// Остаток задолженности не хранится — считается по согласованной формуле.
+/// TODO(заказчик): формула остатка и состав граф.
+model ObjectFinance {
+  objectId          String     @id @db.Uuid
+  object            LiftObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  contractNumber    String?
+  contractDate      DateTime?  @db.Date
+  contractAmount    Decimal?   @db.Decimal(14, 2)
+  equipmentCost     Decimal?   @db.Decimal(14, 2) // стоимость оборудования от завода
+  customerPrice     Decimal?   @db.Decimal(14, 2) // стоимость для Заказчика
+  closedWorksAmount Decimal?   @db.Decimal(14, 2) // сумма закрытых работ
+  paidAmount        Decimal?   @db.Decimal(14, 2) // поступившая оплата
+  updatedAt         DateTime   @updatedAt @db.Timestamptz
+}
+
+// ---------- Журнал и уведомления ----------
+
+model AuditLog {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  createdAt DateTime    @default(now()) @db.Timestamptz
+  userId    String?     @db.Uuid
+  user      User?       @relation(fields: [userId], references: [id])
+  entity    String
+  entityId  String
+  action    String
+  /// Что изменилось: { field: [было, стало] }
+  changes   Json?
+  objectId  String?     @db.Uuid
+  object    LiftObject? @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@index([objectId, createdAt])
+  @@index([createdAt])
+}
+
+enum NotificationLevel {
+  INFO
+  WARNING
+  DANGER
+}
+
+model Notification {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  createdAt DateTime          @default(now()) @db.Timestamptz
+  /// Адресат; null — всем руководителям
+  userId    String?           @db.Uuid
+  user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objectId  String?           @db.Uuid
+  object    LiftObject?       @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  level     NotificationLevel @default(INFO)
+  topic     String
+  text      String
+  readAt    DateTime?         @db.Timestamptz
+
+  @@index([userId, readAt])
+}
