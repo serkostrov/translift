@@ -1,9 +1,11 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { hasRole, useCurrentUser } from '@/entities/session';
+import { ClaimsPage } from '@/pages/claims';
 import { DashboardPage } from '@/pages/dashboard';
 import { ForemanPage } from '@/pages/foreman';
 import { LoginPage } from '@/pages/login';
 import { NotFoundPage } from '@/pages/not-found';
+import { NotificationsPage } from '@/pages/notifications';
 import { ObjectPage } from '@/pages/object';
 import { ObjectsPage } from '@/pages/objects';
 import { RefsPage } from '@/pages/refs';
@@ -39,6 +41,15 @@ export const router = createBrowserRouter([
       },
       { path: 'objects/:id', element: <ObjectPage /> },
       { path: 'foreman', element: <ForemanPage /> },
+      { path: 'notifications', element: <NotificationsPage /> },
+      {
+        path: 'claims',
+        element: (
+          <RequireAuth roles={[...OFFICE]}>
+            <ClaimsPage />
+          </RequireAuth>
+        ),
+      },
       {
         path: 'refs',
         element: (

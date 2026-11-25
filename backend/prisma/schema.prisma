@@ -20,15 +20,17 @@ enum Role {
 }
 
 model User {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  login        String   @unique
-  passwordHash String
-  fullName     String
-  phone        String?
-  role         Role
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
+  id                  String    @id @default(uuid(7)) @db.Uuid
+  login               String    @unique
+  passwordHash        String
+  fullName            String
+  phone               String?
+  role                Role
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @db.Timestamptz
+  /// Уведомления до этого момента считаются прочитанными
+  notificationsReadAt DateTime? @db.Timestamptz
 
   ledBrigade    Brigade?       @relation("BrigadeForeman")
   sessions      Session[]
@@ -344,6 +346,10 @@ model Notification {
   topic     String
   text      String
   readAt    DateTime?         @db.Timestamptz
+  /// Ключ для защиты от повторов: например `risk:<objectId>:DEADLINE_RISK`
+  dedupeKey String?
 
   @@index([userId, readAt])
+  @@index([dedupeKey, createdAt])
+  @@index([createdAt])
 }

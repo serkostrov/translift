@@ -150,6 +150,22 @@ export class ObjectsService {
         },
         tx,
       );
+      if (created.brigadeId) {
+        const brigade = await tx.brigade.findUnique({
+          where: { id: created.brigadeId },
+          select: { foremanId: true },
+        });
+        if (brigade?.foremanId) {
+          await tx.notification.create({
+            data: {
+              userId: brigade.foremanId,
+              objectId: created.id,
+              topic: 'Новый объект',
+              text: `Вам назначен объект: ${created.shortAddress}`,
+            },
+          });
+        }
+      }
       return created;
     });
     return this.get(row.id, user);
@@ -182,6 +198,23 @@ export class ObjectsService {
           },
           tx,
         );
+        // Бригадиру — уведомление о новом объекте
+        if (changes.brigadeId && typeof data.brigadeId === 'string') {
+          const brigade = await tx.brigade.findUnique({
+            where: { id: data.brigadeId },
+            select: { foremanId: true },
+          });
+          if (brigade?.foremanId) {
+            await tx.notification.create({
+              data: {
+                userId: brigade.foremanId,
+                objectId: id,
+                topic: 'Новый объект',
+                text: `Вам назначен объект: ${before.shortAddress}`,
+              },
+            });
+          }
+        }
       });
     }
     return this.get(id, user);
@@ -322,6 +355,23 @@ export class ObjectsService {
       const [, percent] = changes.percent ?? [];
       const photos = Number(changes.photos ?? 0);
       return `Отметил этап «${stage}» — ${percent}%${photos ? `, фото: ${photos}` : ''}`;
+    }
+    if (action === 'claim' && changes) return String(changes.text ?? 'Рекламация');
+    if (action === 'finance' && changes) {
+      const labels: Record<string, string> = {
+        contractNumber: 'номер договора',
+        contractDate: 'дата договора',
+        contractAmount: 'сумма договора',
+        equipmentCost: 'стоимость оборудования',
+        customerPrice: 'стоимость для заказчика',
+        closedWorksAmount: 'закрытые работы',
+        paidAmount: 'оплата',
+        debt: 'остаток',
+      };
+      const fields = Object.keys(changes)
+        .filter((k) => k !== 'debt')
+        .map((k) => labels[k] ?? k);
+      return `Изменил финансовые сведения: ${fields.join(', ')}`;
     }
     if (action === 'revoke' && changes) {
       const [from, to] = changes.stage ?? [];

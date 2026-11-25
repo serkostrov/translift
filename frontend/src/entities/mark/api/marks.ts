@@ -23,11 +23,16 @@ export function useObjectFiles(objectId: string, kind?: FileKind) {
 }
 
 /** Сжимает фото на устройстве и загружает оригинал + превью. */
-export async function uploadPhoto(objectId: string, file: File): Promise<FileDto> {
+export async function uploadPhoto(
+  objectId: string,
+  file: File,
+  claimId?: string,
+): Promise<FileDto> {
   const { full, thumb, takenAt } = await compressPhoto(file);
   const form = new FormData();
   form.set('objectId', objectId);
   form.set('kind', 'PHOTO');
+  if (claimId) form.set('claimId', claimId);
   form.set('takenAt', takenAt);
   form.set('file', full, `${file.name.replace(/\.\w+$/, '')}.jpg`);
   form.set('thumb', thumb, 'thumb.jpg');

@@ -6,10 +6,13 @@ import {
   CalendarDays,
   CircleCheck,
   Pencil,
+  Plus,
   Undo2,
 } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
+import { ClaimStatusBadge, useClaims } from '@/entities/claim';
 import { PhotoThumbs, useMarks, useObjectFiles, useRevokeLastMark } from '@/entities/mark';
 import {
   FlagBadge,
@@ -20,6 +23,8 @@ import {
 } from '@/entities/object';
 import { useTemplates } from '@/entities/refs';
 import { hasRole, isManager, useCurrentUser } from '@/entities/session';
+import { ClaimFormDialog, ClaimSheet } from '@/features/claim';
+import { FinanceCard } from '@/features/finance';
 import { MarkStageDrawer } from '@/features/mark-stage';
 import { ObjectDatesDialog } from '@/features/object-dates';
 import { ObjectFormDialog } from '@/features/object-form';
@@ -162,6 +167,8 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
           <TabsTrigger value="work">Ход работ</TabsTrigger>
           <TabsTrigger value="photos">Фото</TabsTrigger>
           <TabsTrigger value="info">Сведения</TabsTrigger>
+          <TabsTrigger value="claims">Рекламации</TabsTrigger>
+          {!isForeman && <TabsTrigger value="finance">Финансы</TabsTrigger>}
           <TabsTrigger value="history">История</TabsTrigger>
         </TabsList>
         <TabsContent value="work">
@@ -173,6 +180,14 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
         <TabsContent value="info">
           <InfoCard object={o} />
         </TabsContent>
+        <TabsContent value="claims">
+          <ObjectClaims objectId={o.id} />
+        </TabsContent>
+        {!isForeman && (
+          <TabsContent value="finance">
+            <FinanceCard objectId={o.id} />
+          </TabsContent>
+        )}
         <TabsContent value="history">
           <HistoryCard objectId={o.id} />
         </TabsContent>
@@ -284,6 +299,59 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
           </ol>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+function ObjectClaims({ objectId }: { objectId: string }) {
+  const claims = useClaims({ objectId });
+  const [openId, setOpenId] = useState<string | null>(null);
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>Рекламации</CardTitle>
+        <ClaimFormDialog
+          objectId={objectId}
+          onCreated={setOpenId}
+          trigger={
+            <Button variant="outline" size="sm">
+              <Plus />
+              Рекламация
+            </Button>
+          }
+        />
+      </CardHeader>
+      <CardContent>
+        {claims.isPending ? (
+          <Skeleton className="h-24" />
+        ) : !claims.data?.length ? (
+          <p className="text-sm text-muted-foreground">
+            Брак, недокомплект или несоответствие поставки — заведите рекламацию
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {claims.data.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpenId(c.id)}
+                  className="flex w-full items-start gap-3 py-2 text-left hover:bg-muted/40"
+                >
+                  <span className="tabular-nums text-muted-foreground">№{c.number}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{c.supplier}</div>
+                    <div className="line-clamp-2 text-sm text-muted-foreground">
+                      {c.description}
+                    </div>
+                  </div>
+                  <ClaimStatusBadge status={c.status} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+      <ClaimSheet id={openId} onClose={() => setOpenId(null)} />
     </Card>
   );
 }

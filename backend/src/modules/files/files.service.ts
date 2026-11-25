@@ -25,6 +25,7 @@ const EXT: Record<string, string> = {
 
 export type UploadInput = {
   objectId: string;
+  claimId?: string;
   kind: FileKind;
   title?: string | null;
   takenAt?: string | null;
@@ -58,11 +59,16 @@ export class FilesService {
 
   async upload(input: UploadInput, user: SessionUser): Promise<FileDto> {
     await this.objects.ensureAccess(input.objectId, user);
+    if (input.claimId) {
+      const claim = await this.prisma.claim.findUnique({ where: { id: input.claimId } });
+      if (claim?.objectId !== input.objectId)
+        throw new BadRequestException('Рекламация не из этого объекта');
+    }
     const { file, thumb } = input;
     if (input.kind === 'PHOTO' && !PHOTO_MIME.test(file.mimetype)) {
       throw new BadRequestException('Фото должно быть изображением');
     }
-    if (user.role === 'FOREMAN' && input.kind !== 'PHOTO') {
+    if (user.role === 'FOREMAN' && input.kind !== 'PHOTO' && !input.claimId) {
       throw new ForbiddenException('Бригадир загружает только фото');
     }
 
@@ -89,6 +95,7 @@ export class FilesService {
         takenAt: input.takenAt ? new Date(input.takenAt) : null,
         uploadedById: user.id,
         objectId: input.objectId,
+        claimId: input.claimId ?? null,
       },
     });
     return toFileDto(row);

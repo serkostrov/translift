@@ -1,7 +1,8 @@
 /**
  * Демо-данные из HTML-прототипа: бригады с бригадирами, договор, 11 объектов.
  * Только для локальной разработки и показа. Повторный запуск ничего не дублирует.
- * Пароль бригадиров — SEED_DEMO_PASSWORD из .env.
+ * Логины: director, finance, brigadir1…4. Пароль — SEED_DEMO_PASSWORD из .env
+ * (повторный запуск выставляет его заново).
  */
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -19,15 +20,15 @@ const day = (offset: number) => {
 };
 
 const OFFICE_USERS = [
-  { login: 'dmitry', fullName: 'Дмитрий (зам. директора по монтажу)', role: 'MANAGER' as const },
+  { login: 'director', fullName: 'Дмитрий (зам. директора по монтажу)', role: 'MANAGER' as const },
   { login: 'finance', fullName: 'Ольга (финансы)', role: 'FINANCE' as const },
 ];
 
 const BRIGADES = [
-  { name: 'Бригада Смирнова', login: 'smirnov', fullName: 'Алексей Смирнов', headcount: 3 },
-  { name: 'Бригада Козлова', login: 'kozlov', fullName: 'Игорь Козлов', headcount: 3 },
-  { name: 'Бригада Волкова', login: 'volkov', fullName: 'Павел Волков', headcount: 2 },
-  { name: 'Бригада Зайцева', login: 'zaitsev', fullName: 'Николай Зайцев', headcount: 3 },
+  { name: 'Бригада Смирнова', login: 'brigadir1', fullName: 'Алексей Смирнов', headcount: 3 },
+  { name: 'Бригада Козлова', login: 'brigadir2', fullName: 'Игорь Козлов', headcount: 3 },
+  { name: 'Бригада Волкова', login: 'brigadir3', fullName: 'Павел Волков', headcount: 2 },
+  { name: 'Бригада Зайцева', login: 'brigadir4', fullName: 'Николай Зайцев', headcount: 3 },
 ];
 
 // [полный адрес, короткий, этажность, г/п, срок (дн. от сегодня), открыт (дн.), бригада (индекс), этап]
@@ -100,8 +101,17 @@ async function main() {
   for (const u of OFFICE_USERS) {
     await prisma.user.upsert({
       where: { login: u.login },
-      update: {},
+      update: { passwordHash },
       create: { ...u, passwordHash },
+    });
+  }
+
+  // Бригадиры — до проверки объектов, чтобы повторный запуск сбрасывал им пароль
+  for (const b of BRIGADES) {
+    await prisma.user.upsert({
+      where: { login: b.login },
+      update: { passwordHash },
+      create: { login: b.login, fullName: b.fullName, role: 'FOREMAN', passwordHash },
     });
   }
 
@@ -114,7 +124,7 @@ async function main() {
   for (const b of BRIGADES) {
     const foreman = await prisma.user.upsert({
       where: { login: b.login },
-      update: {},
+      update: { passwordHash },
       create: { login: b.login, fullName: b.fullName, role: 'FOREMAN', passwordHash },
     });
     brigades.push(

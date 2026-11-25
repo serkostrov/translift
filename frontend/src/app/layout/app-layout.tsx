@@ -1,7 +1,9 @@
 import { ROLE_LABELS, type Role } from '@contracts';
 import {
+  Bell,
   BookOpen,
   Building2,
+  FileWarning,
   HardDrive,
   LayoutDashboard,
   LogOut,
@@ -9,18 +11,29 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
+import { useNotifications } from '@/entities/notification';
 import { hasRole, useCurrentUser, useLogout } from '@/entities/session';
+import { ThemeToggle } from '@/features/theme-toggle';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 
-type NavItem = { to: string; label: string; icon: LucideIcon; roles?: Role[] };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  roles?: Role[];
+  /** false — не показывать в нижней панели телефона */
+  mobile?: boolean;
+};
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Сводка', icon: LayoutDashboard, roles: ['ADMIN', 'MANAGER', 'FINANCE'] },
   { to: '/objects', label: 'Объекты', icon: Building2, roles: ['ADMIN', 'MANAGER', 'FINANCE'] },
   { to: '/foreman', label: 'Мои объекты', icon: Smartphone, roles: ['FOREMAN'] },
+  { to: '/claims', label: 'Рекламации', icon: FileWarning, roles: ['ADMIN', 'MANAGER', 'FINANCE'] },
+  { to: '/notifications', label: 'Уведомления', icon: Bell, mobile: false },
   { to: '/refs', label: 'Справочники', icon: BookOpen, roles: ['ADMIN', 'MANAGER'] },
-  { to: '/storage', label: 'Хранилище', icon: HardDrive, roles: ['ADMIN'] },
+  { to: '/storage', label: 'Хранилище', icon: HardDrive, roles: ['ADMIN'], mobile: false },
 ];
 
 /** Каркас: боковое меню на десктопе, нижняя панель на телефоне. */
@@ -29,6 +42,8 @@ export function AppLayout() {
   const logout = useLogout();
   const navigate = useNavigate();
   const items = NAV.filter((n) => !n.roles || hasRole(user, ...n.roles));
+  const mobileItems = items.filter((n) => n.mobile !== false);
+  const unread = useNotifications().data?.unread ?? 0;
 
   const onLogout = () => logout.mutate(undefined, { onSettled: () => navigate('/login') });
 
@@ -54,22 +69,41 @@ export function AppLayout() {
             >
               <Icon className="size-4" />
               {label}
+              {to === '/notifications' && unread > 0 && (
+                <span className="ml-auto rounded-full bg-destructive px-1.5 text-xs text-white tabular-nums">
+                  {unread}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
         <div className="mt-auto border-t px-4 py-3 text-sm">
           <div className="font-medium">{user.fullName}</div>
           <div className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</div>
-          <Button variant="ghost" size="sm" className="mt-2 -ml-2" onClick={onLogout}>
-            <LogOut />
-            Выйти
-          </Button>
+          <div className="mt-2 flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="-ml-2" onClick={onLogout}>
+              <LogOut />
+              Выйти
+            </Button>
+            <ThemeToggle withLabel />
+          </div>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b bg-background px-4 py-2 md:hidden">
-          <span className="font-semibold">Транслифт</span>
+          <span className="mr-auto font-semibold">Транслифт</span>
+          <ThemeToggle />
+          <Button variant="ghost" size="icon" asChild aria-label="Уведомления">
+            <NavLink to="/notifications" className="relative">
+              <Bell />
+              {unread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-white">
+                  {unread}
+                </span>
+              )}
+            </NavLink>
+          </Button>
           <Button variant="ghost" size="sm" onClick={onLogout} aria-label="Выйти">
             <span className="max-w-40 truncate text-xs text-muted-foreground">{user.fullName}</span>
             <LogOut />
@@ -80,12 +114,12 @@ export function AppLayout() {
         </main>
       </div>
 
-      {items.length > 1 && (
+      {mobileItems.length > 1 && (
         <nav
           className="fixed inset-x-0 bottom-0 z-40 grid border-t bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
-          style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}
         >
-          {items.map(({ to, label, icon: Icon }) => (
+          {mobileItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

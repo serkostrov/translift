@@ -53,7 +53,7 @@ pnpm dev
 - API: http://localhost:3000/api, Swagger: http://localhost:3000/api/docs
 - Консоль MinIO: http://localhost:9102
 
-Порты сдвинуты (Postgres `5433`, MinIO `9101`/`9102`), чтобы не мешать другим проектам. Логин и пароль первого администратора — в `backend/.env` (`SEED_ADMIN_*`). Демо-пользователи (пароль — `SEED_DEMO_PASSWORD`): руководитель `dmitry`, финансы `finance`, бригадиры `smirnov`, `kozlov`, `volkov`, `zaitsev`.
+Порты сдвинуты (Postgres `5433`, MinIO `9101`/`9102`), чтобы не мешать другим проектам. Пользователи для локальной разработки (пароль у всех `password1234`, задаётся в `backend/.env`): `admin` — администратор, `director` — руководитель, `finance` — финансы, `brigadir1`…`brigadir4` — бригадиры (последние — после `db:seed:demo`).
 
 ## Команды
 

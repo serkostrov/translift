@@ -29,6 +29,8 @@ import { FilesService, MAX_UPLOAD_BYTES } from './files.service.js';
 
 const uploadBodySchema = z.object({
   objectId: idSchema,
+  /** Вложение рекламации */
+  claimId: idSchema.optional(),
   kind: z.enum(FILE_KINDS).default('PHOTO'),
   title: z.string().trim().max(300).optional(),
   takenAt: z.iso.datetime({ offset: true }).optional(),

@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { useLogin, useSession } from '@/entities/session';
+import { ThemeToggle } from '@/features/theme-toggle';
 import { errorMessage } from '@/shared/api/http';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -26,7 +27,10 @@ export function LoginPage() {
   );
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
+    <div className="relative flex min-h-dvh items-center justify-center bg-muted/30 p-4">
+      <div className="absolute top-3 right-3">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl">Транслифт</CardTitle>

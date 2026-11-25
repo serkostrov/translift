@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router';
+import { NotificationItem, useNotifications } from '@/entities/notification';
 import { useObjects } from '@/entities/object';
 import { useCurrentUser } from '@/entities/session';
 import { Card } from '@/shared/ui/card';
@@ -10,13 +11,21 @@ import { Skeleton } from '@/shared/ui/skeleton';
 export function ForemanPage() {
   const user = useCurrentUser();
   const objects = useObjects();
+  const fresh = (useNotifications().data?.items ?? []).filter((n) => n.unread).slice(0, 3);
   const active = (objects.data ?? [])
     .filter((o) => o.state !== 'DONE')
     .sort((a, b) => a.percent - b.percent);
 
   return (
-    <div className="mx-auto max-w-md space-y-3">
+    <div className="space-y-3">
       <h1 className="text-xl font-semibold">Мои объекты</h1>
+      {fresh.length > 0 && (
+        <Card className="gap-0 border-amber-300 bg-amber-50 py-1 dark:border-amber-900 dark:bg-amber-950/30">
+          {fresh.map((n) => (
+            <NotificationItem key={n.id} n={n} />
+          ))}
+        </Card>
+      )}
       {user.role === 'FOREMAN' && !user.brigadeId && (
         <p className="text-sm text-muted-foreground">
           Вы пока не привязаны к бригаде — попросите руководителя.
@@ -29,23 +38,25 @@ export function ForemanPage() {
           Объектов пока нет. Когда руководитель назначит объект, он появится здесь.
         </Card>
       ) : (
-        active.map((o) => (
-          <Link key={o.id} to={`/objects/${o.id}`} className="block">
-            <Card className="gap-2 p-4 active:bg-muted">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 font-medium">{o.shortAddress}</div>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {o.currentStage
-                  ? `Сейчас: ${o.currentStage.shortName} · ${o.percent}%`
-                  : 'Новый объект'}
-              </div>
-              <Progress value={o.percent} />
-              {o.nextStage && <div className="text-sm">Следующий: {o.nextStage.shortName}</div>}
-            </Card>
-          </Link>
-        ))
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {active.map((o) => (
+            <Link key={o.id} to={`/objects/${o.id}`} className="block">
+              <Card className="gap-2 p-4 active:bg-muted">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 font-medium">{o.shortAddress}</div>
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {o.currentStage
+                    ? `Сейчас: ${o.currentStage.shortName} · ${o.percent}%`
+                    : 'Новый объект'}
+                </div>
+                <Progress value={o.percent} />
+                {o.nextStage && <div className="text-sm">Следующий: {o.nextStage.shortName}</div>}
+              </Card>
+            </Link>
+          ))}
+        </div>
       )}
     </div>
   );

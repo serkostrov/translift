@@ -1,3 +1,4 @@
+import { ThemeProvider } from 'next-themes';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
@@ -12,11 +13,13 @@ if (!root) throw new Error('#root not found');
 
 createRoot(root).render(
   <StrictMode>
-    <QueryProvider>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-        <Toaster position="top-center" />
-      </TooltipProvider>
-    </QueryProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <QueryProvider>
+        <TooltipProvider>
+          <RouterProvider router={router} />
+          <Toaster position="top-center" />
+        </TooltipProvider>
+      </QueryProvider>
+    </ThemeProvider>
   </StrictMode>,
 );
