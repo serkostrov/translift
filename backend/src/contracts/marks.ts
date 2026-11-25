@@ -23,6 +23,10 @@ export type FileDto = {
   thumbUrl: string | null;
   /** Оригинал удалён при очистке, осталось превью */
   originalPurged: boolean;
+  /** Контекст — заполняется в списке файлов объекта (вкладка «Фото») */
+  uploadedBy?: { id: string; fullName: string } | null;
+  stage?: { order: number; shortName: string; markedAt: string } | null;
+  claim?: { id: string; number: number } | null;
 };
 
 export const markCreateSchema = z.object({

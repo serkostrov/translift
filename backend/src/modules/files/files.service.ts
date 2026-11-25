@@ -122,8 +122,28 @@ export class FilesService {
     const rows = await this.prisma.file.findMany({
       where: { objectId, kind },
       orderBy: { createdAt: 'desc' },
+      include: {
+        uploadedBy: { select: { id: true, fullName: true } },
+        stageMark: {
+          select: {
+            performedAt: true,
+            revokedAt: true,
+            stage: { select: { order: true, shortName: true } },
+          },
+        },
+        claim: { select: { id: true, number: true } },
+      },
     });
-    return rows.map(toFileDto);
+    return rows.map((f) => ({
+      ...toFileDto(f),
+      uploadedBy: f.uploadedBy,
+      // Фото отменённой отметки показываем как «без этапа»
+      stage:
+        f.stageMark && !f.stageMark.revokedAt
+          ? { ...f.stageMark.stage, markedAt: f.stageMark.performedAt.toISOString() }
+          : null,
+      claim: f.claim,
+    }));
   }
 
   async remove(id: string) {

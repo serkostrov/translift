@@ -1,15 +1,25 @@
-import { DELIVERY_LABELS, type FileDto, type ObjectDetails, WORK_TYPE_LABELS } from '@contracts';
+import {
+  DELIVERY_LABELS,
+  type FileDto,
+  type MarkDto,
+  type ObjectDetails,
+  type TemplateStageDto,
+  WORK_TYPE_LABELS,
+} from '@contracts';
 import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
   CalendarDays,
+  Camera,
+  ChevronDown,
   CircleCheck,
+  MessageSquare,
   Pencil,
   Plus,
   Undo2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { ClaimStatusBadge, useClaims } from '@/entities/claim';
@@ -226,6 +236,21 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
   const current = o.currentStage?.order ?? 0;
   const markByStage = new Map((marks.data ?? []).map((m) => [m.stage.id, m]));
 
+  // Раскрытые этапы. По умолчанию — только последний отмеченный; открытые не закрываются
+  // при открытии других. После новой отметки раскрывается и она.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const lastStageId = o.currentStage?.id;
+  useEffect(() => {
+    if (lastStageId) setExpanded((prev) => new Set(prev).add(lastStageId));
+  }, [lastStageId]);
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -268,53 +293,115 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
           <StagesSkeleton />
         ) : (
           <ol>
-            {stages.map((s) => {
-              const done = s.order <= current;
-              const next = s.order === current + 1;
-              const mark = markByStage.get(s.id);
-              return (
-                <li
-                  key={s.id}
-                  className={cn('flex gap-3 rounded-md px-2 py-2', next && 'bg-muted')}
-                >
-                  <span
-                    className={cn(
-                      'flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums',
-                      done && 'border-primary bg-primary text-primary-foreground',
-                    )}
-                  >
-                    {done ? '✓' : s.order}
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className={cn(!done && !next && 'text-muted-foreground')}>
-                      {s.shortName}
-                      {next && (
-                        <span className="ml-2 text-xs text-muted-foreground">следующий</span>
-                      )}
-                    </div>
-                    {mark && (
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTime(mark.performedAt)} · {mark.author.fullName}
-                        {mark.auto && ' · отмечен вместе со следующим этапом'}
-                      </div>
-                    )}
-                    {mark?.comment && <p className="text-sm">{mark.comment}</p>}
-                    {mark && (
-                      <PhotoThumbs
-                        photos={mark.photos}
-                        size="sm"
-                        caption={() => `${s.shortName}, ${formatDateTime(mark.performedAt)}`}
-                      />
-                    )}
-                  </div>
-                  <span className="tabular-nums text-sm text-muted-foreground">{s.percent}%</span>
-                </li>
-              );
-            })}
+            {stages.map((s) => (
+              <StageRow
+                key={s.id}
+                stage={s}
+                current={current}
+                mark={markByStage.get(s.id)}
+                open={expanded.has(s.id)}
+                onToggle={() => toggle(s.id)}
+              />
+            ))}
           </ol>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Этап в лестнице: свёрнут — дата, автор и значки комментария/фото; раскрыт — всё целиком. */
+function StageRow({
+  stage: s,
+  current,
+  mark,
+  open,
+  onToggle,
+}: {
+  stage: TemplateStageDto;
+  current: number;
+  mark: MarkDto | undefined;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const done = s.order <= current;
+  const next = s.order === current + 1;
+  const photos = mark?.photos.length ?? 0;
+  const hasDetails = !!mark && (!!mark.comment || photos > 0);
+
+  const head = (
+    <>
+      <span
+        className={cn(
+          'flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums',
+          done && 'border-primary bg-primary text-primary-foreground',
+        )}
+      >
+        {done ? '✓' : s.order}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={cn(!done && !next && 'text-muted-foreground')}>
+          {s.shortName}
+          {next && <span className="ml-2 text-xs text-muted-foreground">следующий</span>}
+        </div>
+        {mark && (
+          <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            <span>
+              {formatDateTime(mark.performedAt)} · {mark.author.fullName}
+            </span>
+            {mark.auto && <span>· вместе со следующим этапом</span>}
+            {!open && mark.comment && (
+              <span className="flex items-center gap-0.5" title="Есть комментарий">
+                <MessageSquare className="size-3.5" />
+              </span>
+            )}
+            {!open && photos > 0 && (
+              <span className="flex items-center gap-0.5" title="Фото">
+                <Camera className="size-3.5" />
+                {photos}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <span className="text-sm tabular-nums text-muted-foreground">{s.percent}%</span>
+      {hasDetails && (
+        <ChevronDown
+          className={cn(
+            'size-4 shrink-0 text-muted-foreground transition-transform',
+            open && 'rotate-180',
+          )}
+        />
+      )}
+    </>
+  );
+
+  return (
+    <li className={cn('rounded-md', next && 'bg-muted')}>
+      {hasDetails ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted/60"
+        >
+          {head}
+        </button>
+      ) : (
+        <div className="flex items-start gap-3 px-2 py-2">{head}</div>
+      )}
+      {hasDetails && open && mark && (
+        <div className="space-y-2 pb-3 pl-11 pr-2">
+          {mark.comment && <p className="text-sm whitespace-pre-wrap">{mark.comment}</p>}
+          <PhotoThumbs
+            photos={mark.photos}
+            caption={() =>
+              `${s.shortName} · ${mark.author.fullName}, ${formatDateTime(mark.performedAt)}`
+            }
+          />
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -371,26 +458,67 @@ function ObjectClaims({ objectId }: { objectId: string }) {
   );
 }
 
+type PhotoGroup = {
+  key: string;
+  title: string;
+  subtitle: string;
+  order: number;
+  photos: FileDto[];
+};
+
+/** Все фото объекта, сгруппированные: этапы (новые сверху), рекламации, без этапа. */
 function PhotosCard({ objectId }: { objectId: string }) {
   const photos = useObjectFiles(objectId, 'PHOTO');
-  const marks = useMarks(objectId);
-  // Подпись фото: этап и дата отметки
-  const stageOf = new Map<string, string>();
-  for (const m of marks.data ?? []) for (const p of m.photos) stageOf.set(p.id, m.stage.shortName);
-  const caption = (p: FileDto) =>
-    `${stageOf.get(p.id) ?? 'Без этапа'}, ${formatDateTime(p.takenAt ?? p.createdAt)}`;
+
+  const groups = new Map<string, PhotoGroup>();
+  for (const p of photos.data ?? []) {
+    const key = p.stage ? `stage-${p.stage.order}` : p.claim ? `claim-${p.claim.id}` : 'other';
+    let g = groups.get(key);
+    if (!g) {
+      const base = p.stage
+        ? {
+            title: `${p.stage.order}. ${p.stage.shortName}`,
+            subtitle: `отмечен ${formatDateTime(p.stage.markedAt)}`,
+            order: 1000 + p.stage.order,
+          }
+        : p.claim
+          ? { title: `Рекламация №${p.claim.number}`, subtitle: '', order: 500 + p.claim.number }
+          : { title: 'Без этапа', subtitle: 'загружены, но не попали в отметку', order: 0 };
+      g = { key, ...base, photos: [] };
+      groups.set(key, g);
+    }
+    g.photos.push(p);
+  }
+  const sorted = [...groups.values()].sort((a, b) => b.order - a.order);
+  const authors = (list: FileDto[]) =>
+    [...new Set(list.map((p) => p.uploadedBy?.fullName).filter(Boolean))].join(', ');
+  const caption = (title: string) => (p: FileDto) =>
+    `${title} · ${p.uploadedBy?.fullName ?? '—'}, ${formatDateTime(p.takenAt ?? p.createdAt)}`;
 
   return (
     <Card>
       <CardContent>
         {photos.isPending ? (
           <CardsSkeleton count={3} />
-        ) : !photos.data?.length ? (
+        ) : !sorted.length ? (
           <p className="text-sm text-muted-foreground">
             Фото появятся, когда бригадир отметит первый этап
           </p>
         ) : (
-          <PhotoThumbs photos={photos.data} caption={caption} />
+          <div className="divide-y">
+            {sorted.map((g) => (
+              <section key={g.key} className="space-y-2 py-3 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <h3 className="font-medium">{g.title}</h3>
+                  <span className="text-xs text-muted-foreground">
+                    {[g.subtitle, authors(g.photos)].filter(Boolean).join(' · ')} ·{' '}
+                    {g.photos.length} фото
+                  </span>
+                </div>
+                <PhotoThumbs photos={g.photos} caption={caption(g.title)} />
+              </section>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

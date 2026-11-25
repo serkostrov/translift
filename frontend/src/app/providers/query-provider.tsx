@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, type ReactNode, Suspense, useState } from 'react';
 import { ApiError } from '@/shared/api/http';
 
@@ -10,19 +10,27 @@ const Devtools = import.meta.env.DEV
   : () => null;
 
 export function QueryProvider({ children }: { children: ReactNode }) {
-  const [client] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            // 4xx не повторяем: ошибка не исчезнет от повтора
-            retry: (count, error) =>
-              !(error instanceof ApiError && error.status < 500) && count < 2,
-          },
-        },
+  const [client] = useState(() => {
+    const qc: QueryClient = new QueryClient({
+      /**
+       * После любого успешного изменения всё (кроме сессии) считаем устаревшим:
+       * открытые экраны перезагрузятся сразу, остальные — при переходе на них.
+       * Иначе легко забыть ключ (сводка, уведомления) и показать старый процент.
+       * Данных немного — лишний запрос дешевле, чем устаревшая цифра.
+       */
+      mutationCache: new MutationCache({
+        onSuccess: () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'session' }),
       }),
-  );
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          // 4xx не повторяем: ошибка не исчезнет от повтора
+          retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
+        },
+      },
+    });
+    return qc;
+  });
 
   return (
     <QueryClientProvider client={client}>

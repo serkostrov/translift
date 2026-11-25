@@ -1,9 +1,11 @@
 // Модель данных «Транслифт». Черновик до ответов заказчика — см. docs/PLAN.md, «Открытые вопросы».
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  // Явно: иначе в Docker генератор выбирает .ts-импорты, и собранный dist не запускается
+  importFileExtension = "js"
 }
 
 datasource db {

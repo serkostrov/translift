@@ -4,6 +4,8 @@
 
 - Требования: [TZ.md](TZ.md)
 - План, стек и модель данных: [docs/PLAN.md](docs/PLAN.md)
+- Установка на сервер, резервные копии: [docs/DEPLOY.md](docs/DEPLOY.md)
+- Приёмка по ТЗ: [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)
 
 ## Структура
 
@@ -12,6 +14,7 @@
 | `backend/`           | NestJS 12 (ESM), Prisma 7 + PostgreSQL, S3 (MinIO)                    |
 | `frontend/`          | React 19 + Vite, shadcn/ui (Radix), TanStack Query, React Router, FSD |
 | `docker-compose.yml` | Локальные PostgreSQL и MinIO                                          |
+| `deploy/`            | Сборка и запуск на сервере: Dockerfile, compose, Caddy, копии         |
 
 ## Запуск локально
 

@@ -10,3 +10,6 @@ coverage/
 *.log
 backend/src/generated/
 .vite/
+
+# Резервные копии и настройки сервера
+deploy/backups/
