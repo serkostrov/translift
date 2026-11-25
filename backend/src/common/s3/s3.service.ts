@@ -1,3 +1,4 @@
+import type { Readable } from 'node:stream';
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -5,13 +6,14 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 
-const URL_TTL_SECONDS = 15 * 60;
-
+/**
+ * S3 (MinIO). Наружу не открыт: файлы загружаются и отдаются через backend,
+ * который проверяет права доступа.
+ */
 @Injectable()
 export class S3Service {
   readonly bucket: string;
@@ -30,33 +32,21 @@ export class S3Service {
     });
   }
 
-  /** Ссылка для загрузки файла напрямую из браузера. */
-  uploadUrl(key: string, contentType: string) {
-    return getSignedUrl(
-      this.client,
-      new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType }),
-      { expiresIn: URL_TTL_SECONDS },
+  async put(key: string, body: Buffer, contentType: string) {
+    await this.client.send(
+      new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }),
     );
   }
 
-  /** Временная ссылка на просмотр файла. */
-  downloadUrl(key: string, fileName?: string) {
-    return getSignedUrl(
-      this.client,
-      new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        ResponseContentDisposition: fileName
-          ? `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`
-          : undefined,
-      }),
-      { expiresIn: URL_TTL_SECONDS },
-    );
+  async get(key: string) {
+    const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    return { body: res.Body as Readable, contentType: res.ContentType, length: res.ContentLength };
   }
 
   async deleteMany(keys: string[]) {
     for (let i = 0; i < keys.length; i += 1000) {
       const chunk = keys.slice(i, i + 1000);
+      if (!chunk.length) continue;
       await this.client.send(
         new DeleteObjectsCommand({
           Bucket: this.bucket,

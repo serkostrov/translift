@@ -219,6 +219,17 @@ export class ObjectsService {
     }
   }
 
+  /** Объект существует и доступен пользователю (бригадиру — только своей бригады). */
+  async ensureAccess(objectId: string, user: SessionUser) {
+    const obj = await this.prisma.liftObject.findUnique({
+      where: { id: objectId },
+      select: { id: true, brigadeId: true, archivedAt: true },
+    });
+    if (!obj) throw new NotFoundException('Объект не найден');
+    this.assertAccess(obj.brigadeId, user);
+    return obj;
+  }
+
   private async stagesByTemplate() {
     const stages = await this.prisma.templateStage.findMany({
       select: { id: true, order: true, shortName: true, percent: true, templateId: true },
@@ -306,6 +317,16 @@ export class ObjectsService {
     names: Map<string, string>,
   ) {
     if (action === 'create') return 'Создал объект';
+    if (action === 'mark' && changes) {
+      const [, stage] = changes.stage ?? [];
+      const [, percent] = changes.percent ?? [];
+      const photos = Number(changes.photos ?? 0);
+      return `Отметил этап «${stage}» — ${percent}%${photos ? `, фото: ${photos}` : ''}`;
+    }
+    if (action === 'revoke' && changes) {
+      const [from, to] = changes.stage ?? [];
+      return `Отменил отметку «${from}», текущий этап: ${to ?? 'не начат'}`;
+    }
     if (!changes) return action;
     const show = (key: string, v: unknown) => {
       if (v === null || v === undefined || v === '') return '—';

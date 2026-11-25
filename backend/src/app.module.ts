@@ -7,7 +7,9 @@ import { PrismaModule } from './common/prisma/prisma.module.js';
 import { PrismaExceptionFilter } from './common/prisma/prisma-exception.filter.js';
 import { S3Module } from './common/s3/s3.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { FilesModule } from './modules/files/files.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { MarksModule } from './modules/marks/marks.module.js';
 import { ObjectsModule } from './modules/objects/objects.module.js';
 import { RefsModule } from './modules/refs/refs.module.js';
 
@@ -21,6 +23,8 @@ import { RefsModule } from './modules/refs/refs.module.js';
     HealthModule,
     RefsModule,
     ObjectsModule,
+    FilesModule,
+    MarksModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: PrismaExceptionFilter }],
 })

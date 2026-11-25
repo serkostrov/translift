@@ -18,6 +18,11 @@ const day = (offset: number) => {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 };
 
+const OFFICE_USERS = [
+  { login: 'dmitry', fullName: 'Дмитрий (зам. директора по монтажу)', role: 'MANAGER' as const },
+  { login: 'finance', fullName: 'Ольга (финансы)', role: 'FINANCE' as const },
+];
+
 const BRIGADES = [
   { name: 'Бригада Смирнова', login: 'smirnov', fullName: 'Алексей Смирнов', headcount: 3 },
   { name: 'Бригада Козлова', login: 'kozlov', fullName: 'Игорь Козлов', headcount: 3 },
@@ -89,11 +94,21 @@ const OBJECTS: Row[] = [
 async function main() {
   const password = process.env.SEED_DEMO_PASSWORD;
   if (!password) throw new Error('Задайте SEED_DEMO_PASSWORD в .env');
+  const passwordHash = await hashPassword(password);
+
+  // Офисные роли для показа: руководитель и сотрудник с доступом к финансам
+  for (const u of OFFICE_USERS) {
+    await prisma.user.upsert({
+      where: { login: u.login },
+      update: {},
+      create: { ...u, passwordHash },
+    });
+  }
+
   if (await prisma.liftObject.count()) {
-    console.warn('Объекты уже есть — демо-данные не загружаются');
+    console.warn('Объекты уже есть — бригады и объекты не загружаются');
     return;
   }
-  const passwordHash = await hashPassword(password);
 
   const brigades = [];
   for (const b of BRIGADES) {

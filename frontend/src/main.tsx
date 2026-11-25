@@ -15,7 +15,7 @@ createRoot(root).render(
     <QueryProvider>
       <TooltipProvider>
         <RouterProvider router={router} />
-        <Toaster />
+        <Toaster position="top-center" />
       </TooltipProvider>
     </QueryProvider>
   </StrictMode>,

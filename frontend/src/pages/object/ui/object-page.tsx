@@ -1,7 +1,16 @@
-import { DELIVERY_LABELS, type ObjectDetails, WORK_TYPE_LABELS } from '@contracts';
-import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Pencil } from 'lucide-react';
-import { Link, useParams } from 'react-router';
+import { DELIVERY_LABELS, type FileDto, type ObjectDetails, WORK_TYPE_LABELS } from '@contracts';
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  CalendarDays,
+  CircleCheck,
+  Pencil,
+  Undo2,
+} from 'lucide-react';
+import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
+import { PhotoThumbs, useMarks, useObjectFiles, useRevokeLastMark } from '@/entities/mark';
 import {
   FlagBadge,
   ObjectStateBadge,
@@ -10,12 +19,24 @@ import {
   useUpdateObject,
 } from '@/entities/object';
 import { useTemplates } from '@/entities/refs';
-import { isManager, useCurrentUser } from '@/entities/session';
+import { hasRole, isManager, useCurrentUser } from '@/entities/session';
+import { MarkStageDrawer } from '@/features/mark-stage';
 import { ObjectDatesDialog } from '@/features/object-dates';
 import { ObjectFormDialog } from '@/features/object-form';
 import { errorMessage } from '@/shared/api/http';
 import { formatDate, formatDateTime, formatDaysLeft } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/shared/ui/alert-dialog';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -33,7 +54,10 @@ export function ObjectPage() {
 
 function ObjectView({ object: o }: { object: ObjectDetails }) {
   const user = useCurrentUser();
+  const navigate = useNavigate();
   const canEdit = isManager(user);
+  const isForeman = hasRole(user, 'FOREMAN');
+  const canMark = (canEdit || isForeman) && o.state !== 'DONE' && !o.archived;
   const update = useUpdateObject(o.id);
 
   const toggleArchive = () =>
@@ -46,13 +70,23 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
       },
     );
 
+  const markButton = (className?: string) => (
+    <MarkStageDrawer
+      object={o}
+      trigger={
+        <Button className={className}>
+          <CircleCheck />
+          Отметить этап
+        </Button>
+      }
+    />
+  );
+
   return (
-    <div className="space-y-4">
-      <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link to="/objects">
-          <ArrowLeft />
-          Объекты
-        </Link>
+    <div className={cn('space-y-4', canMark && isForeman && 'pb-16 md:pb-0')}>
+      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate(-1)}>
+        <ArrowLeft />
+        Назад
       </Button>
 
       <Card>
@@ -73,37 +107,35 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
                 <FlagBadge key={f.code} flag={f} />
               ))}
             </div>
-            {canEdit && (
-              <div className="flex flex-wrap gap-2">
-                <ObjectFormDialog
-                  object={o}
-                  trigger={
-                    <Button variant="outline" size="sm">
-                      <Pencil />
-                      Изменить
-                    </Button>
-                  }
-                />
-                <ObjectDatesDialog
-                  object={o}
-                  trigger={
-                    <Button variant="outline" size="sm">
-                      <CalendarDays />
-                      Поставка и даты
-                    </Button>
-                  }
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleArchive}
-                  disabled={update.isPending}
-                >
-                  {o.archived ? <ArchiveRestore /> : <Archive />}
-                  {o.archived ? 'Из архива' : 'В архив'}
-                </Button>
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {canMark && markButton(isForeman ? 'hidden md:inline-flex' : 'w-full sm:w-auto')}
+              {canEdit && (
+                <>
+                  <ObjectFormDialog
+                    object={o}
+                    trigger={
+                      <Button variant="outline">
+                        <Pencil />
+                        Изменить
+                      </Button>
+                    }
+                  />
+                  <ObjectDatesDialog
+                    object={o}
+                    trigger={
+                      <Button variant="outline">
+                        <CalendarDays />
+                        Поставка и даты
+                      </Button>
+                    }
+                  />
+                  <Button variant="ghost" onClick={toggleArchive} disabled={update.isPending}>
+                    {o.archived ? <ArchiveRestore /> : <Archive />}
+                    {o.archived ? 'Из архива' : 'В архив'}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
           <div className="text-right">
             <div className="text-5xl font-semibold tabular-nums">{o.percent}%</div>
@@ -128,11 +160,15 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
       <Tabs defaultValue="work">
         <TabsList>
           <TabsTrigger value="work">Ход работ</TabsTrigger>
+          <TabsTrigger value="photos">Фото</TabsTrigger>
           <TabsTrigger value="info">Сведения</TabsTrigger>
           <TabsTrigger value="history">История</TabsTrigger>
         </TabsList>
         <TabsContent value="work">
-          <StagesCard object={o} />
+          <StagesCard object={o} canRevoke={canEdit && !!o.currentStage} />
+        </TabsContent>
+        <TabsContent value="photos">
+          <PhotosCard objectId={o.id} />
         </TabsContent>
         <TabsContent value="info">
           <InfoCard object={o} />
@@ -141,35 +177,75 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
           <HistoryCard objectId={o.id} />
         </TabsContent>
       </Tabs>
+
+      {/* На телефоне главная кнопка всегда под пальцем */}
+      {canMark && isForeman && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+          {markButton('h-12 w-full text-base')}
+        </div>
+      )}
     </div>
   );
 }
 
-function StagesCard({ object: o }: { object: ObjectDetails }) {
+function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke: boolean }) {
   const templates = useTemplates();
+  const marks = useMarks(o.id);
+  const revoke = useRevokeLastMark(o.id);
   const stages = templates.data?.find((t) => t.id === o.templateId)?.stages ?? [];
   const current = o.currentStage?.order ?? 0;
+  const markByStage = new Map((marks.data ?? []).map((m) => [m.stage.id, m]));
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Этапы</CardTitle>
+        {canRevoke && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <Undo2 />
+                Отменить последнюю отметку
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Отменить отметку «{o.currentStage?.shortName}»?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Объект вернётся на предыдущий этап. Фото останутся в архиве объекта, контрольные
+                  даты при необходимости поправьте вручную.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Не отменять</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    revoke.mutate(undefined, {
+                      onSuccess: () => toast.success('Отметка отменена'),
+                      onError: (e) => toast.error(errorMessage(e)),
+                    })
+                  }
+                >
+                  Отменить отметку
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </CardHeader>
       <CardContent>
-        {templates.isPending ? (
+        {templates.isPending || marks.isPending ? (
           <Skeleton className="h-64" />
         ) : (
-          <ol className="space-y-1">
+          <ol>
             {stages.map((s) => {
               const done = s.order <= current;
               const next = s.order === current + 1;
+              const mark = markByStage.get(s.id);
               return (
                 <li
                   key={s.id}
-                  className={cn(
-                    'flex items-center gap-3 rounded-md px-2 py-1.5',
-                    next && 'bg-muted',
-                  )}
+                  className={cn('flex gap-3 rounded-md px-2 py-2', next && 'bg-muted')}
                 >
                   <span
                     className={cn(
@@ -179,19 +255,60 @@ function StagesCard({ object: o }: { object: ObjectDetails }) {
                   >
                     {done ? '✓' : s.order}
                   </span>
-                  <span className={cn('flex-1', !done && !next && 'text-muted-foreground')}>
-                    {s.shortName}
-                    {next && <span className="ml-2 text-xs text-muted-foreground">следующий</span>}
-                  </span>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className={cn(!done && !next && 'text-muted-foreground')}>
+                      {s.shortName}
+                      {next && (
+                        <span className="ml-2 text-xs text-muted-foreground">следующий</span>
+                      )}
+                    </div>
+                    {mark && (
+                      <div className="text-xs text-muted-foreground">
+                        {formatDateTime(mark.performedAt)} · {mark.author.fullName}
+                        {mark.auto && ' · отмечен вместе со следующим этапом'}
+                      </div>
+                    )}
+                    {mark?.comment && <p className="text-sm">{mark.comment}</p>}
+                    {mark && (
+                      <PhotoThumbs
+                        photos={mark.photos}
+                        size="sm"
+                        caption={() => `${s.shortName}, ${formatDateTime(mark.performedAt)}`}
+                      />
+                    )}
+                  </div>
                   <span className="tabular-nums text-sm text-muted-foreground">{s.percent}%</span>
                 </li>
               );
             })}
           </ol>
         )}
-        <p className="mt-3 text-xs text-muted-foreground">
-          Отметки этапов с фото бригадир будет ставить с телефона.
-        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PhotosCard({ objectId }: { objectId: string }) {
+  const photos = useObjectFiles(objectId, 'PHOTO');
+  const marks = useMarks(objectId);
+  // Подпись фото: этап и дата отметки
+  const stageOf = new Map<string, string>();
+  for (const m of marks.data ?? []) for (const p of m.photos) stageOf.set(p.id, m.stage.shortName);
+  const caption = (p: FileDto) =>
+    `${stageOf.get(p.id) ?? 'Без этапа'}, ${formatDateTime(p.takenAt ?? p.createdAt)}`;
+
+  return (
+    <Card>
+      <CardContent>
+        {photos.isPending ? (
+          <Skeleton className="h-40" />
+        ) : !photos.data?.length ? (
+          <p className="text-sm text-muted-foreground">
+            Фото появятся, когда бригадир отметит первый этап
+          </p>
+        ) : (
+          <PhotoThumbs photos={photos.data} caption={caption} />
+        )}
       </CardContent>
     </Card>
   );

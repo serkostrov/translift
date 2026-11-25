@@ -201,6 +201,8 @@ model StageMark {
   author      User          @relation(fields: [authorId], references: [id])
   comment     String?
   revokedAt   DateTime?     @db.Timestamptz
+  /// Отмечен автоматически вместе со следующим этапом
+  isAuto      Boolean       @default(false)
   createdAt   DateTime      @default(now()) @db.Timestamptz
   photos      File[]
 
