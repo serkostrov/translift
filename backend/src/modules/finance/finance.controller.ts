@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
   debtOf,
   type FinanceDto,
+  type FinanceObjectContract,
   financeUpdateSchema,
   idSchema,
   type SessionUser,
@@ -17,7 +18,10 @@ import { ObjectsService } from '../objects/objects.service.js';
 
 const num = (d: { toNumber(): number } | null) => (d === null ? null : d.toNumber());
 
-export function toFinanceDto(f: ObjectFinance | null): FinanceDto {
+export function toFinanceDto(
+  f: ObjectFinance | null,
+  objectContract: FinanceObjectContract | null = null,
+): FinanceDto {
   const base = {
     contractNumber: f?.contractNumber ?? null,
     contractDate: toDateString(f?.contractDate),
@@ -27,7 +31,12 @@ export function toFinanceDto(f: ObjectFinance | null): FinanceDto {
     closedWorksAmount: num(f?.closedWorksAmount ?? null),
     paidAmount: num(f?.paidAmount ?? null),
   };
-  return { ...base, debt: debtOf(base), updatedAt: f?.updatedAt.toISOString() ?? null };
+  return {
+    ...base,
+    debt: debtOf(base),
+    updatedAt: f?.updatedAt.toISOString() ?? null,
+    objectContract,
+  };
 }
 
 /** Договорные и финансовые сведения объекта. Бригадир их не видит. */
@@ -44,7 +53,21 @@ export class FinanceController {
   @Get()
   async get(@Param('id', { schema: idSchema }) objectId: string, @CurrentUser() user: SessionUser) {
     await this.objects.ensureAccess(objectId, user);
-    return toFinanceDto(await this.prisma.objectFinance.findUnique({ where: { objectId } }));
+    const [finance, contract] = await Promise.all([
+      this.prisma.objectFinance.findUnique({ where: { objectId } }),
+      this.objectContract(objectId),
+    ]);
+    return toFinanceDto(finance, contract);
+  }
+
+  /** Договор из «Сведений» объекта — в финансах он действует, пока свой номер не указан. */
+  private async objectContract(objectId: string): Promise<FinanceObjectContract | null> {
+    const obj = await this.prisma.liftObject.findUnique({
+      where: { id: objectId },
+      select: { contract: { select: { number: true, date: true, customer: true } } },
+    });
+    const c = obj?.contract;
+    return c ? { number: c.number, date: toDateString(c.date), customer: c.customer.name } : null;
   }
 
   @Roles('ADMIN', 'FINANCE')
@@ -67,6 +90,7 @@ export class FinanceController {
       toFinanceDto(after) as unknown as Record<string, unknown>,
     );
     delete changes.updatedAt;
+    delete changes.objectContract;
     if (Object.keys(changes).length) {
       await this.audit.log({
         userId: user.id,
@@ -77,6 +101,6 @@ export class FinanceController {
         changes,
       });
     }
-    return toFinanceDto(after);
+    return toFinanceDto(after, await this.objectContract(objectId));
   }
 }

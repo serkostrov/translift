@@ -339,7 +339,8 @@ export class ReportsService {
       ws.getCell(r, 1).font = { bold: true, size: 12 };
       r++;
       const rows: [string, number | string | null][] = [
-        ['Номер договора', f.contractNumber],
+        // Свой номер в финансах не указан — действует договор объекта
+        ['Номер договора', f.contractNumber ?? obj.contract?.number ?? null],
         ['Сумма договора', f.contractAmount],
         ['Стоимость оборудования от завода', f.equipmentCost],
         ['Стоимость для заказчика', f.customerPrice],

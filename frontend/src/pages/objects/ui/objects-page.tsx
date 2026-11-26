@@ -5,11 +5,11 @@ import {
   type ObjectListQuery,
   WORK_TYPE_LABELS,
 } from '@contracts';
-import { Plus, Search } from 'lucide-react';
+import { Archive, Plus, Search } from 'lucide-react';
 import { useDeferredValue } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { FlagBadge, ObjectStateBadge, StageSegments, useObjects } from '@/entities/object';
-import { useBrigades } from '@/entities/refs';
+import { useBrigades, useContracts } from '@/entities/refs';
 import { isManager, useCurrentUser } from '@/entities/session';
 import { ObjectFormDialog } from '@/features/object-form';
 import { formatDate, formatDaysLeft } from '@/shared/lib/format';
@@ -32,16 +32,22 @@ export function ObjectsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const brigades = useBrigades();
+  const contracts = useContracts();
 
   // Фильтры живут в URL: ссылкой на отфильтрованный список можно поделиться
   const q = params.get('q') ?? '';
   const deferredQ = useDeferredValue(q);
+  const showArchive = params.get('archive') === '1';
   const query: ObjectListQuery = {
     q: deferredQ || undefined,
     brigade: (params.get('brigade') as ObjectListQuery['brigade']) ?? undefined,
     state: (params.get('state') as ObjectListQuery['state']) ?? undefined,
+    contractId: params.get('contract') ?? undefined,
+    archived: showArchive || undefined,
   };
   const objects = useObjects(query);
+  // Сколько в архиве — для кнопки; без фильтров, чтобы число не прыгало
+  const archivedCount = useObjects({ archived: true }).data?.length ?? 0;
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -58,8 +64,22 @@ export function ObjectsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-2xl font-semibold">Объекты</h1>
-        {isManager(user) && (
+        <h1 className="mr-auto text-2xl font-semibold">
+          {showArchive ? 'Архив объектов' : 'Объекты'}
+        </h1>
+        {(archivedCount > 0 || showArchive) && (
+          <Button variant="outline" onClick={() => setParam('archive', showArchive ? null : '1')}>
+            {showArchive ? (
+              'Действующие'
+            ) : (
+              <>
+                <Archive />
+                Архив ({archivedCount})
+              </>
+            )}
+          </Button>
+        )}
+        {isManager(user) && !showArchive && (
           <ObjectFormDialog
             trigger={
               <Button>
@@ -70,6 +90,13 @@ export function ObjectsPage() {
           />
         )}
       </div>
+
+      {showArchive && (
+        <p className="text-sm text-muted-foreground">
+          Архивные объекты не попадают в сводку и общие отчёты. Чтобы вернуть объект в работу,
+          откройте его и нажмите «Из архива».
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <div className="relative w-full sm:w-72">
@@ -101,6 +128,17 @@ export function ObjectsPage() {
           noneLabel="Все состояния"
           options={STATE_OPTIONS}
         />
+        <SimpleSelect
+          aria-label="Договор"
+          className="w-full sm:w-64"
+          value={params.get('contract')}
+          onChange={(v) => setParam('contract', v)}
+          noneLabel="Все договоры"
+          options={(contracts.data ?? []).map((c) => ({
+            value: c.id,
+            label: `${c.number} · ${c.customer.name}`,
+          }))}
+        />
       </div>
 
       {objects.isPending ? (
@@ -109,8 +147,10 @@ export function ObjectsPage() {
         <p className="text-destructive">Не удалось загрузить объекты</p>
       ) : rows.length === 0 ? (
         <Card className="items-center p-10 text-center">
-          <p className="font-medium">Ничего не найдено</p>
-          <p className="text-sm text-muted-foreground">Измените фильтр или добавьте объект</p>
+          <p className="font-medium">{showArchive ? 'В архиве пусто' : 'Ничего не найдено'}</p>
+          {!showArchive && (
+            <p className="text-sm text-muted-foreground">Измените фильтр или добавьте объект</p>
+          )}
         </Card>
       ) : (
         <>

@@ -1,6 +1,15 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
+import { Plus } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
 
 const NONE = '__none__';
+const CREATE = '__create__';
 
 export type SelectOption = { value: string; label: string };
 
@@ -12,6 +21,12 @@ type Props = {
   placeholder?: string;
   /** Подпись пустого варианта; без неё пустое значение выбрать нельзя */
   noneLabel?: string;
+  /**
+   * Пункт «+ Создать …» в конце списка: открывает форму создания поверх текущей.
+   * Созданную запись форма выбирает сама через onChange.
+   */
+  onCreate?: () => void;
+  createLabel?: string;
   className?: string;
   disabled?: boolean;
   'aria-label'?: string;
@@ -25,6 +40,8 @@ export function SimpleSelect({
   options,
   placeholder,
   noneLabel,
+  onCreate,
+  createLabel = 'Создать',
   className,
   disabled,
   'aria-label': ariaLabel,
@@ -32,7 +49,14 @@ export function SimpleSelect({
   return (
     <Select
       value={value ?? (noneLabel ? NONE : undefined)}
-      onValueChange={(v) => onChange(v === NONE ? null : v)}
+      onValueChange={(v) => {
+        if (v === CREATE) {
+          // Даём списку закрыться и вернуть фокус, потом открываем форму поверх
+          setTimeout(() => onCreate?.(), 0);
+          return;
+        }
+        onChange(v === NONE ? null : v);
+      }}
       disabled={disabled}
     >
       <SelectTrigger id={id} className={className ?? 'w-full'} aria-label={ariaLabel}>
@@ -45,6 +69,15 @@ export function SimpleSelect({
             {o.label}
           </SelectItem>
         ))}
+        {onCreate && (
+          <>
+            {(options.length > 0 || noneLabel) && <SelectSeparator />}
+            <SelectItem value={CREATE} className="font-medium text-primary">
+              <Plus />
+              {createLabel}
+            </SelectItem>
+          </>
+        )}
       </SelectContent>
     </Select>
   );

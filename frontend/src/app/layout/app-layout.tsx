@@ -12,7 +12,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useNotifications } from '@/entities/notification';
 import { hasRole, useCurrentUser } from '@/entities/session';
 import { ThemeToggle } from '@/features/theme-toggle';
@@ -75,7 +75,14 @@ export function AppLayout() {
     // Оболочка ровно в высоту экрана: шапка и меню неподвижны, прокручивается только <main>
     <div className="flex h-dvh overflow-hidden bg-muted/30">
       <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r bg-background md:flex">
-        <Logo className="px-4 py-4" />
+        {/* Логотип ведёт на главную: сводка, у бригадира — его объекты */}
+        <Link
+          to="/"
+          aria-label="На главную"
+          className="rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <Logo className="px-4 py-4" />
+        </Link>
         <nav className="flex flex-col gap-1 px-2">
           {items.map(({ to, label, icon: Icon }) => (
             <NavLink
@@ -115,7 +122,13 @@ export function AppLayout() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center justify-between border-b bg-background px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden">
-          <Logo subtitle={false} className="mr-auto [&_svg]:size-7" />
+          <Link
+            to="/"
+            aria-label="На главную"
+            className="mr-auto rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Logo subtitle={false} className="[&_svg]:size-7" />
+          </Link>
           <Button variant="ghost" size="icon" asChild aria-label="Уведомления">
             <NavLink to="/notifications" className="relative">
               <Bell />

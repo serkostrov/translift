@@ -31,6 +31,14 @@ export class MaintenanceService {
     );
   }
 
+  /** Место на диске проверяем каждый час: фото за день могут съесть остаток задолго до ночи. */
+  @Cron('30 * * * *', { timeZone: 'Europe/Moscow' })
+  async hourlyDisk() {
+    const free = await this.checkDisk();
+    if (free !== null && free < DISK_FREE_WARN)
+      this.logger.warn(`Мало места на диске: свободно ${(free * 100).toFixed(0)}%`);
+  }
+
   async run(now = new Date()) {
     const [sessions, notifications] = await Promise.all([
       this.prisma.session.deleteMany({ where: { expiresAt: { lt: now } } }),

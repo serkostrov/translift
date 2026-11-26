@@ -154,7 +154,15 @@ export const financeUpdateSchema = z.object({
 });
 export type FinanceUpdate = z.input<typeof financeUpdateSchema>;
 
+/** Договор, к которому объект привязан в «Сведениях» (справочник договоров). */
+export type FinanceObjectContract = { number: string; date: string | null; customer: string };
+
 export type FinanceDto = {
+  /**
+   * Номер и дата договора в финансах. Пусто — действует договор объекта (objectContract).
+   * Заполняют, только если по деньгам договор другой (например, отдельный договор на лифт).
+   * TODO(заказчик): бывает ли у объекта отдельный договор по финансам или он всегда тот же.
+   */
   contractNumber: string | null;
   contractDate: string | null;
   contractAmount: number | null;
@@ -165,6 +173,7 @@ export type FinanceDto = {
   /** Остаток задолженности — вычисляется, см. debtOf() */
   debt: number | null;
   updatedAt: string | null;
+  objectContract: FinanceObjectContract | null;
 };
 
 /**

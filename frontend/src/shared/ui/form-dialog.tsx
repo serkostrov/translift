@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useId } from 'react';
 import { Button } from '@/shared/ui/button';
 import {
   Dialog,
@@ -17,7 +17,14 @@ type Props = {
   description?: string;
   onSubmit: () => void;
   submitting?: boolean;
+  submitLabel?: string;
   children: ReactNode;
+  /**
+   * Вложенные диалоги (создание записи из селекта). Рендерятся внутри окна, но вне формы:
+   * так Radix считает их дочерним слоем (клик в них не закрывает это окно),
+   * а submit вложенной формы не всплывает в эту.
+   */
+  nested?: ReactNode;
 };
 
 /** Диалог формы справочника: заголовок, поля, «Отмена / Сохранить». */
@@ -28,8 +35,12 @@ export function FormDialog({
   description,
   onSubmit,
   submitting,
+  submitLabel = 'Сохранить',
   children,
+  nested,
 }: Props) {
+  // Окна бывают открыты одно поверх другого — id формы у каждого свой
+  const formId = useId();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
@@ -38,10 +49,11 @@ export function FormDialog({
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <form
-          id="ref-form"
+          id={formId}
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             onSubmit();
           }}
         >
@@ -51,10 +63,11 @@ export function FormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>
-          <Button type="submit" form="ref-form" disabled={submitting}>
-            Сохранить
+          <Button type="submit" form={formId} disabled={submitting}>
+            {submitLabel}
           </Button>
         </DialogFooter>
+        {nested}
       </DialogContent>
     </Dialog>
   );

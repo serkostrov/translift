@@ -51,6 +51,9 @@ export function FinanceCard({ objectId }: { objectId: string }) {
   if (finance.isPending) return <BlockSkeleton lines={6} />;
   if (finance.isError) return <p className="text-destructive">{errorMessage(finance.error)}</p>;
   const f = finance.data;
+  const oc = f.objectContract;
+  // Свой номер в финансах не указан — действует договор из «Сведений»
+  const ownContract = f.contractNumber !== null;
 
   const onSubmit = form.handleSubmit((body) =>
     save.mutate(body, {
@@ -88,9 +91,14 @@ export function FinanceCard({ objectId }: { objectId: string }) {
 
         {canEdit ? (
           <form onSubmit={onSubmit} noValidate className="grid gap-4 sm:grid-cols-2">
+            <ObjectContractNote contract={oc} own={ownContract} />
             <Field>
               <FieldLabel htmlFor="contractNumber">Номер договора</FieldLabel>
-              <Input id="contractNumber" {...form.register('contractNumber')} />
+              <Input
+                id="contractNumber"
+                placeholder={oc ? `${oc.number} — из сведений` : undefined}
+                {...form.register('contractNumber')}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="contractDate">Дата договора</FieldLabel>
@@ -122,7 +130,17 @@ export function FinanceCard({ objectId }: { objectId: string }) {
           <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
             <dt className="text-muted-foreground">Договор</dt>
             <dd>
-              {f.contractNumber ?? '—'} {f.contractDate && `от ${formatDate(f.contractDate)}`}
+              {ownContract ? (
+                <>
+                  {f.contractNumber} {f.contractDate && `от ${formatDate(f.contractDate)}`}
+                </>
+              ) : oc ? (
+                <>
+                  {oc.number} {oc.date && `от ${formatDate(oc.date)}`} · {oc.customer}
+                </>
+              ) : (
+                '—'
+              )}
             </dd>
             {MONEY.map(([key, label]) => (
               <div key={key} className="contents">
@@ -135,4 +153,20 @@ export function FinanceCard({ objectId }: { objectId: string }) {
       </CardContent>
     </Card>
   );
+}
+
+/** Откуда в финансах договор: из «Сведений» объекта или свой. */
+function ObjectContractNote({
+  contract,
+  own,
+}: {
+  contract: FinanceDto['objectContract'];
+  own: boolean;
+}) {
+  const text = !contract
+    ? 'Объект не привязан к договору — привяжите в «Изменить» или укажите номер здесь.'
+    : own
+      ? `В сведениях объекта — договор № ${contract.number} (${contract.customer}). Здесь указан другой: очистите номер, чтобы действовал договор из сведений.`
+      : `Действует договор из сведений объекта: № ${contract.number}${contract.date ? ` от ${formatDate(contract.date)}` : ''}, ${contract.customer}. Номер ниже заполняйте, только если по деньгам договор другой.`;
+  return <p className="text-sm text-muted-foreground sm:col-span-2">{text}</p>;
 }

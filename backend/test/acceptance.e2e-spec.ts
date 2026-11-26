@@ -191,6 +191,29 @@ describe('Приёмка по ТЗ: 8 критериев', () => {
   });
 
   it('6. Заполняются финансовые поля и правильно считается остаток', async () => {
+    // Договор из «Сведений» объекта виден в финансах, пока свой номер не указан
+    const empty = (await finance.get(`/api/objects/${objectId}/finance`).expect(200))
+      .body as FinanceDto;
+    expect(empty.objectContract).toBeNull();
+    const customer = await admin
+      .post('/api/customers')
+      .send({ name: `Фонд капремонта ${Date.now()}` })
+      .expect(201);
+    const contract = await admin
+      .post('/api/contracts')
+      .send({ customerId: customer.body.id, number: `ФКР-${Date.now()}`, date: '2026-02-01' })
+      .expect(201);
+    await admin
+      .patch(`/api/objects/${objectId}`)
+      .send({ contractId: contract.body.id })
+      .expect(200);
+    const linked = (await finance.get(`/api/objects/${objectId}/finance`).expect(200))
+      .body as FinanceDto;
+    expect(linked).toMatchObject({
+      contractNumber: null,
+      objectContract: { number: contract.body.number, date: '2026-02-01' },
+    });
+
     const saved = await finance
       .put(`/api/objects/${objectId}/finance`)
       .send({

@@ -1,26 +1,30 @@
-import { type ContractDto, type ContractUpsert, contractUpsertSchema } from '@contracts';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus } from 'lucide-react';
-import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
-import { toast } from 'sonner';
-import type { z } from 'zod';
-import { useContracts, useCustomers, useSaveContract, useSaveCustomer } from '@/entities/refs';
-import { errorMessage } from '@/shared/api/http';
+import type { ContractDto } from '@contracts';
+import { Plus, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
+import { ContractDialog, useContracts } from '@/entities/refs';
 import { formatDate } from '@/shared/lib/format';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { DataList } from '@/shared/ui/data-list';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
-import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
-import { SimpleSelect } from '@/shared/ui/simple-select';
-
-type FormInput = z.input<typeof contractUpsertSchema> & { newCustomer?: string };
 
 export function ContractsTab() {
   const contracts = useContracts();
   const [editing, setEditing] = useState<ContractDto | 'new' | null>(null);
+  const [query, setQuery] = useState('');
+
+  // Ищем по номеру, дате (как в списке — дд.мм.гггг), заказчику, ИНН и ответственному
+  const rows = useMemo(() => {
+    const all = contracts.data ?? [];
+    const q = query.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((c) =>
+      [c.number, c.date && formatDate(c.date), c.customer.name, c.customer.inn, c.responsible]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [contracts.data, query]);
 
   return (
     <div className="space-y-3">
@@ -33,8 +37,23 @@ export function ContractsTab() {
           Договор
         </Button>
       </div>
+      <div className="relative sm:w-80">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          className="pl-8"
+          placeholder="Номер, дата, заказчик, ИНН"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       <DataList
-        rows={contracts.data ?? []}
+        rows={rows}
+        empty={
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            {query ? 'Ничего не найдено' : 'Договоров пока нет'}
+          </p>
+        }
         rowKey={(c) => c.id}
         onRowClick={setEditing}
         columns={[
@@ -59,7 +78,19 @@ export function ContractsTab() {
           {
             key: 'objects',
             header: 'Объектов',
-            cell: (c) => c.objectsCount,
+            // Число — ссылка на список объектов этого договора
+            cell: (c) =>
+              c.objectsCount ? (
+                <Link
+                  to={`/objects?contract=${c.id}`}
+                  className="underline-offset-4 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {c.objectsCount}
+                </Link>
+              ) : (
+                0
+              ),
             className: 'tabular-nums',
           },
         ]}
@@ -71,121 +102,5 @@ export function ContractsTab() {
         />
       )}
     </div>
-  );
-}
-
-const NEW_CUSTOMER = '__new__';
-
-function ContractDialog({
-  contract,
-  onClose,
-}: {
-  contract: ContractDto | null;
-  onClose: () => void;
-}) {
-  const save = useSaveContract();
-  const saveCustomer = useSaveCustomer();
-  const customers = useCustomers();
-  const [newCustomer, setNewCustomer] = useState('');
-  const form = useForm<FormInput, unknown, ContractUpsert>({
-    resolver: zodResolver(contractUpsertSchema),
-    defaultValues: {
-      customerId: contract?.customer.id ?? customers.data?.[0]?.id ?? NEW_CUSTOMER,
-      number: contract?.number ?? '',
-      date: contract?.date ?? null,
-      responsible: contract?.responsible ?? '',
-      photoReportLink: contract?.photoReportLink ?? '',
-      isActive: contract?.isActive ?? true,
-    },
-  });
-  const { errors } = form.formState;
-  const customerId = form.watch('customerId');
-
-  const submit = async () => {
-    try {
-      // Новый заказчик создаётся прямо из формы договора
-      if (form.getValues('customerId') === NEW_CUSTOMER) {
-        if (!newCustomer.trim()) {
-          toast.error('Укажите заказчика');
-          return;
-        }
-        const c = await saveCustomer.mutateAsync({ body: { name: newCustomer.trim() } });
-        form.setValue('customerId', c.id);
-      }
-      await form.handleSubmit(async (body) => {
-        await save.mutateAsync({ id: contract?.id, body });
-        toast.success('Договор сохранён');
-        onClose();
-      })();
-    } catch (e) {
-      toast.error(errorMessage(e));
-    }
-  };
-
-  return (
-    <FormDialog
-      open
-      onOpenChange={(v) => !v && onClose()}
-      title={contract ? `Договор № ${contract.number}` : 'Новый договор'}
-      onSubmit={submit}
-      submitting={save.isPending || saveCustomer.isPending}
-    >
-      <Field>
-        <FieldLabel htmlFor="customerId">Заказчик / генподрядчик</FieldLabel>
-        <Controller
-          control={form.control}
-          name="customerId"
-          render={({ field }) => (
-            <SimpleSelect
-              id="customerId"
-              value={field.value}
-              onChange={(v) => field.onChange(v ?? NEW_CUSTOMER)}
-              options={[
-                ...(customers.data ?? []).map((c) => ({ value: c.id, label: c.name })),
-                { value: NEW_CUSTOMER, label: '+ Новый заказчик' },
-              ]}
-            />
-          )}
-        />
-        {customerId === NEW_CUSTOMER && (
-          <Input
-            placeholder="ООО «…»"
-            value={newCustomer}
-            onChange={(e) => setNewCustomer(e.target.value)}
-            aria-label="Название заказчика"
-          />
-        )}
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field data-invalid={!!errors.number}>
-          <FieldLabel htmlFor="number">Номер</FieldLabel>
-          <Input id="number" {...form.register('number')} />
-          <FieldError errors={[errors.number]} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="date">Дата</FieldLabel>
-          <Input
-            id="date"
-            type="date"
-            {...form.register('date', { setValueAs: (v) => v || null })}
-          />
-        </Field>
-      </div>
-      <Field>
-        <FieldLabel htmlFor="responsible">Ответственный в отчёте</FieldLabel>
-        <Input id="responsible" placeholder="ФИО" {...form.register('responsible')} />
-      </Field>
-      <Field data-invalid={!!errors.photoReportLink}>
-        <FieldLabel htmlFor="photoReportLink">Ссылка для фотоотчётов</FieldLabel>
-        <Input
-          id="photoReportLink"
-          type="url"
-          placeholder="https://…"
-          {...form.register('photoReportLink')}
-        />
-        <FieldDescription>Попадает в шапку отчёта генподрядчику</FieldDescription>
-        <FieldError errors={[errors.photoReportLink]} />
-      </Field>
-    </FormDialog>
   );
 }

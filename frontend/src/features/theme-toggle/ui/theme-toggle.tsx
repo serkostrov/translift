@@ -37,7 +37,8 @@ export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
           {withLabel && 'Тема'}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      {/* Ширина по содержимому: по умолчанию меню шириной с кнопку, галочка наезжает на «Системная» */}
+      <DropdownMenuContent align="start" className="w-auto min-w-40">
         <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
           {OPTIONS.map(({ value, label, icon: ItemIcon }) => (
             <DropdownMenuRadioItem key={value} value={value}>

@@ -12,7 +12,8 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { z } from 'zod';
 import { useCreateObject, useUpdateObject } from '@/entities/object';
-import { useBrigades, useContracts } from '@/entities/refs';
+import { BrigadeDialog, ContractDialog, useBrigades, useContracts } from '@/entities/refs';
+import { hasRole, useCurrentUser } from '@/entities/session';
 import { errorMessage } from '@/shared/api/http';
 import { Button } from '@/shared/ui/button';
 import {
@@ -45,6 +46,23 @@ function shorten(address: string) {
 
 type Props = { object?: ObjectDetails; trigger: ReactNode };
 
+/**
+ * Значения формы из объекта — считаются при каждом открытии, а не один раз при монтировании:
+ * иначе после сохранения форма показывала бы старые договор и бригаду.
+ * Договор новому объекту не подставляем — выбирают явно, чтобы не привязать не тот.
+ */
+const valuesOf = (object?: ObjectDetails): FormInput => ({
+  address: object?.address ?? '',
+  shortAddress: object?.shortAddress ?? '',
+  floors: object?.floors ?? 9,
+  capacityKg: object?.capacityKg ?? 400,
+  liftInfo: object?.liftInfo ?? '',
+  workType: object?.workType ?? 'REPLACEMENT',
+  contractId: object?.contract?.id ?? null,
+  brigadeId: object?.brigade?.id ?? null,
+  deadline: object?.deadline ?? null,
+});
+
 /** Создание и редактирование объекта. */
 export function ObjectFormDialog({ object, trigger }: Props) {
   const [open, setOpen] = useState(false);
@@ -53,20 +71,12 @@ export function ObjectFormDialog({ object, trigger }: Props) {
   const update = useUpdateObject(object?.id ?? '');
   const brigades = useBrigades();
   const contracts = useContracts();
+  const user = useCurrentUser();
+  const [creating, setCreating] = useState<'contract' | 'brigade' | null>(null);
 
   const form = useForm<FormInput, unknown, ObjectCreate>({
     resolver: zodResolver(objectCreateSchema),
-    defaultValues: {
-      address: object?.address ?? '',
-      shortAddress: object?.shortAddress ?? '',
-      floors: object?.floors ?? 9,
-      capacityKg: object?.capacityKg ?? 400,
-      liftInfo: object?.liftInfo ?? '',
-      workType: object?.workType ?? 'REPLACEMENT',
-      contractId: object?.contract?.id ?? contracts.data?.find((c) => c.isActive)?.id ?? null,
-      brigadeId: object?.brigade?.id ?? null,
-      deadline: object?.deadline ?? null,
-    },
+    defaultValues: valuesOf(object),
   });
   const { errors } = form.formState;
 
@@ -92,7 +102,8 @@ export function ObjectFormDialog({ object, trigger }: Props) {
       open={open}
       onOpenChange={(v) => {
         setOpen(v);
-        if (v) form.reset();
+        if (v) form.reset(valuesOf(object));
+        else setCreating(null);
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -193,10 +204,14 @@ export function ObjectFormDialog({ object, trigger }: Props) {
                       value={field.value}
                       onChange={field.onChange}
                       noneLabel="Без договора"
-                      options={(contracts.data ?? []).map((c) => ({
-                        value: c.id,
-                        label: `${c.number} · ${c.customer.name}`,
-                      }))}
+                      options={(contracts.data ?? [])
+                        .filter((c) => c.isActive || c.id === field.value)
+                        .map((c) => ({
+                          value: c.id,
+                          label: `${c.number} · ${c.customer.name}`,
+                        }))}
+                      onCreate={() => setCreating('contract')}
+                      createLabel="Новый договор"
                     />
                   )}
                 />
@@ -229,6 +244,8 @@ export function ObjectFormDialog({ object, trigger }: Props) {
                         value: b.id,
                         label: `${b.name}${b.foreman ? ` · ${b.foreman.fullName}` : ''}`,
                       }))}
+                    onCreate={() => setCreating('brigade')}
+                    createLabel="Новая бригада"
                   />
                 )}
               />
@@ -244,6 +261,23 @@ export function ObjectFormDialog({ object, trigger }: Props) {
             {object ? 'Сохранить' : 'Добавить'}
           </Button>
         </DialogFooter>
+
+        {/* Внутри окна, но вне формы: открываются поверх, submit не всплывает в форму объекта */}
+        {creating === 'contract' && (
+          <ContractDialog
+            contract={null}
+            onClose={() => setCreating(null)}
+            onSaved={(c) => form.setValue('contractId', c.id, { shouldDirty: true })}
+          />
+        )}
+        {creating === 'brigade' && (
+          <BrigadeDialog
+            brigade={null}
+            canCreateForeman={hasRole(user, 'ADMIN')}
+            onClose={() => setCreating(null)}
+            onSaved={(b) => form.setValue('brigadeId', b.id, { shouldDirty: true })}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
