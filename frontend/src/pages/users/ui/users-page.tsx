@@ -19,6 +19,7 @@ import type { z } from 'zod';
 import {
   useCreateUser,
   useDeleteUser,
+  useDismissResetRequest,
   useResetPassword,
   useUpdateUser,
   useUsers,
@@ -26,6 +27,7 @@ import {
 import { useCurrentUser } from '@/entities/session';
 import { errorMessage } from '@/shared/api/http';
 import { formatDateTime } from '@/shared/lib/format';
+import { cn } from '@/shared/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,7 +73,9 @@ export function UsersPage() {
   const [showArchive, setShowArchive] = useState(false);
 
   const all = users.data ?? [];
-  const requests = all.filter((u) => u.resetRequestedAt && u.isActive);
+  const me = useCurrentUser();
+  // Свой пароль администратор меняет в профиле — себя в блоке запросов не показываем
+  const requests = all.filter((u) => u.resetRequestedAt && u.isActive && u.id !== me.id);
   const archived = all.filter((u) => !u.isActive).length;
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -420,6 +424,7 @@ function EditUserDialog({
   const reset = useResetPassword();
   const [confirmReset, setConfirmReset] = useState(false);
   const remove = useDeleteUser();
+  const dismiss = useDismissResetRequest();
   const form = useForm<UserUpdate, unknown, z.output<typeof userUpdateSchema>>({
     resolver: zodResolver(userUpdateSchema),
     defaultValues: {
@@ -534,10 +539,53 @@ function EditUserDialog({
         <FieldDescription>
           Войти можно по логину, телефону или почте — любому из них.
         </FieldDescription>
-        <div className="rounded-lg border p-3">
-          <div className="mb-2 text-sm font-medium">Пароль</div>
+        <div
+          className={cn(
+            'rounded-lg border p-3',
+            user.resetRequestedAt && 'border-amber-500/50 bg-amber-500/5',
+          )}
+        >
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+            {user.resetRequestedAt && <KeyRound className="size-4 text-amber-600" />}
+            {user.resetRequestedAt
+              ? `Просит новый пароль · ${formatDateTime(user.resetRequestedAt)}`
+              : 'Пароль'}
+          </div>
+          {user.resetRequestedAt && (
+            <p className="mb-3 text-sm text-muted-foreground">
+              {isMe
+                ? 'Запрос от вашего логина. Если вы вошли — смените пароль в профиле, запрос закроется сам. Или отклоните его.'
+                : 'Нажал «Забыли пароль?» на экране входа. Позвоните сотруднику и убедитесь, что запрос от него. Не от него или пароль вспомнил — отклоните.'}
+            </p>
+          )}
           {isMe ? (
-            <p className="text-sm text-muted-foreground">Свой пароль меняйте в профиле.</p>
+            user.resetRequestedAt ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={dismiss.isPending}
+                onClick={() => act(dismiss.mutateAsync(user.id), 'Запрос отклонён')}
+              >
+                Отклонить запрос
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">Свой пароль меняйте в профиле.</p>
+            )
+          ) : user.resetRequestedAt ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => setConfirmReset(true)}>
+                <KeyRound />
+                Выдать новый пароль
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={dismiss.isPending}
+                onClick={() => act(dismiss.mutateAsync(user.id), 'Запрос отклонён')}
+              >
+                Отклонить
+              </Button>
+            </div>
           ) : (
             <>
               <p className="mb-3 text-sm text-muted-foreground">

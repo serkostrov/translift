@@ -181,6 +181,7 @@ export class MarksService {
       await tx.notification.create({
         data: {
           objectId,
+          link: `/objects/${objectId}`,
           level: 'INFO',
           topic: 'Отметка этапа',
           text: `${user.fullName}. ${text}`,

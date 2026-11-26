@@ -42,13 +42,14 @@ model User {
   /// Сотрудник нажал «Забыли пароль?» и ждёт, когда администратор выдаст новый
   passwordResetRequestedAt DateTime? @db.Timestamptz
 
-  ledBrigade    Brigade?       @relation("BrigadeForeman")
-  sessions      Session[]
-  stageMarks    StageMark[]
-  files         File[]
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  claimComments ClaimComment[]
+  ledBrigade        Brigade?           @relation("BrigadeForeman")
+  sessions          Session[]
+  stageMarks        StageMark[]
+  files             File[]
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  notificationReads NotificationRead[]
+  claimComments     ClaimComment[]
 }
 
 model Session {
@@ -345,21 +346,36 @@ enum NotificationLevel {
 }
 
 model Notification {
-  id        String            @id @default(uuid(7)) @db.Uuid
-  createdAt DateTime          @default(now()) @db.Timestamptz
+  id        String             @id @default(uuid(7)) @db.Uuid
+  createdAt DateTime           @default(now()) @db.Timestamptz
   /// Адресат; null — всем руководителям
-  userId    String?           @db.Uuid
-  user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  objectId  String?           @db.Uuid
-  object    LiftObject?       @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  level     NotificationLevel @default(INFO)
+  userId    String?            @db.Uuid
+  user      User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objectId  String?            @db.Uuid
+  object    LiftObject?        @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  level     NotificationLevel  @default(INFO)
   topic     String
   text      String
-  readAt    DateTime?         @db.Timestamptz
+  /// Куда ведёт кнопка «Перейти»: путь в приложении, например `/objects/<id>`, `/users`
+  link      String?
+  reads     NotificationRead[]
   /// Ключ для защиты от повторов: например `risk:<objectId>:DEADLINE_RISK`
   dedupeKey String?
 
-  @@index([userId, readAt])
+  @@index([userId])
   @@index([dedupeKey, createdAt])
   @@index([createdAt])
+}
+
+/// Прочитано или нет — у каждого пользователя своё. Нет строки — решает
+/// User.notificationsReadAt («Прочитать все»): что старше — прочитано.
+model NotificationRead {
+  notificationId String       @db.Uuid
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String       @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  read           Boolean
+  updatedAt      DateTime     @updatedAt @db.Timestamptz
+
+  @@id([userId, notificationId])
 }

@@ -1,41 +1,54 @@
 import { CheckCheck } from 'lucide-react';
+import { useState } from 'react';
 import {
-  NotificationItem,
+  NotificationList,
   useNotifications,
   useReadAllNotifications,
 } from '@/entities/notification';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ListSkeleton } from '@/shared/ui/skeletons';
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 export function NotificationsPage() {
-  const list = useNotifications();
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const list = useNotifications(onlyUnread);
   const readAll = useReadAllNotifications();
+  const unread = list.data?.unread ?? 0;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Уведомления</h1>
-        {!!list.data?.unread && (
+        {unread > 0 && (
           <Button variant="outline" onClick={() => readAll.mutate()} disabled={readAll.isPending}>
             <CheckCheck />
             Прочитать все
           </Button>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Риски по срокам проверяются каждое утро; отметки этапов и рекламации приходят сразу.
-      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Tabs
+          value={onlyUnread ? 'unread' : 'all'}
+          onValueChange={(v) => setOnlyUnread(v === 'unread')}
+        >
+          <TabsList>
+            <TabsTrigger value="all">Все</TabsTrigger>
+            <TabsTrigger value="unread">Непрочитанные{unread > 0 && ` (${unread})`}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <p className="text-sm text-muted-foreground">
+          Нажмите на уведомление, чтобы открыть и перейти в раздел.
+        </p>
+      </div>
       {list.isPending ? (
         <ListSkeleton rows={6} />
       ) : !list.data?.items.length ? (
-        <Card className="p-6 text-center text-sm text-muted-foreground">Уведомлений пока нет</Card>
-      ) : (
-        <Card className="gap-0 divide-y py-1">
-          {list.data.items.map((n) => (
-            <NotificationItem key={n.id} n={n} />
-          ))}
+        <Card className="p-6 text-center text-sm text-muted-foreground">
+          {onlyUnread ? 'Всё прочитано' : 'Уведомлений пока нет'}
         </Card>
+      ) : (
+        <NotificationList items={list.data.items} groupByDay />
       )}
     </div>
   );

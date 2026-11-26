@@ -160,6 +160,7 @@ export class ObjectsService {
             data: {
               userId: brigade.foremanId,
               objectId: created.id,
+              link: `/objects/${created.id}`,
               topic: 'Новый объект',
               text: `Вам назначен объект: ${created.shortAddress}`,
             },
@@ -209,6 +210,7 @@ export class ObjectsService {
               data: {
                 userId: brigade.foremanId,
                 objectId: id,
+                link: `/objects/${id}`,
                 topic: 'Новый объект',
                 text: `Вам назначен объект: ${before.shortAddress}`,
               },

@@ -217,4 +217,26 @@ describe('Пользователи и восстановление пароля 
     expect(empty.body.canDelete).toBe(true);
     await second.agent.delete(`/api/brigades/${empty.body.id}`).expect(204);
   });
+
+  it('запрос «Забыли пароль?» можно отклонить без сброса', async () => {
+    const foreman = await signIn(app, 'FOREMAN');
+    await request(app.getHttpServer())
+      .post('/api/auth/password-reset-request')
+      .send({ method: 'login', value: foreman.user.login })
+      .expect(204);
+    const second = await signIn(app, 'ADMIN');
+    const before = ((await second.agent.get('/api/users').expect(200)).body as UserDto[]).find(
+      (u) => u.id === foreman.user.id,
+    );
+    expect(before?.resetRequestedAt).not.toBeNull();
+
+    await foreman.agent.delete(`/api/users/${foreman.user.id}/reset-request`).expect(403);
+    await second.agent.delete(`/api/users/${foreman.user.id}/reset-request`).expect(204);
+    const after = ((await second.agent.get('/api/users').expect(200)).body as UserDto[]).find(
+      (u) => u.id === foreman.user.id,
+    );
+    expect(after?.resetRequestedAt).toBeNull();
+    // Старый пароль продолжает работать
+    await foreman.agent.get('/api/auth/me').expect(200);
+  });
 });

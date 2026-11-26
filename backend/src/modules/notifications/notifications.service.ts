@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, type OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { NotificationsDto, SessionUser } from '../../contracts/index.js';
@@ -12,7 +12,10 @@ const NOTIFY_FLAGS = new Set(['OVERDUE', 'DEADLINE_RISK', 'STALE', 'DELIVERY_LAT
 
 /**
  * Уведомления в интерфейсе. Адресные (userId) — конкретному пользователю,
- * общие (userId = null) — всем руководителям. Прочитанность — отметка времени у пользователя.
+ * общие (userId = null) — всем руководителям.
+ *
+ * Прочитанность у каждого своя: строка NotificationRead (прочитано / не прочитано),
+ * а где строки нет — всё, что старше «Прочитать все» (User.notificationsReadAt), прочитано.
  */
 @Injectable()
 export class NotificationsService implements OnApplicationBootstrap {
@@ -28,21 +31,39 @@ export class NotificationsService implements OnApplicationBootstrap {
     return office ? { OR: [{ userId: user.id }, { userId: null }] } : { userId: user.id };
   }
 
-  async list(user: SessionUser): Promise<NotificationsDto> {
+  private async baseline(userId: string) {
     const me = await this.prisma.user.findUniqueOrThrow({
-      where: { id: user.id },
+      where: { id: userId },
       select: { notificationsReadAt: true },
     });
-    const readAt = me.notificationsReadAt ?? new Date(0);
+    return me.notificationsReadAt ?? new Date(0);
+  }
+
+  /** Условие «не прочитано» для пользователя. */
+  private unreadWhere(userId: string, baseline: Date): Prisma.NotificationWhereInput {
+    return {
+      OR: [
+        { reads: { some: { userId, read: false } } },
+        { createdAt: { gt: baseline }, reads: { none: { userId } } },
+      ],
+    };
+  }
+
+  async list(user: SessionUser, onlyUnread = false): Promise<NotificationsDto> {
+    const baseline = await this.baseline(user.id);
     const where = this.whereFor(user);
+    const unreadWhere = { AND: [where, this.unreadWhere(user.id, baseline)] };
     const [rows, unread] = await Promise.all([
       this.prisma.notification.findMany({
-        where,
+        where: onlyUnread ? unreadWhere : where,
         orderBy: { createdAt: 'desc' },
-        take: 100,
-        include: { object: { select: { id: true, shortAddress: true } } },
+        take: 200,
+        include: {
+          object: { select: { id: true, shortAddress: true } },
+          reads: { where: { userId: user.id }, select: { read: true } },
+        },
       }),
-      this.prisma.notification.count({ where: { ...where, createdAt: { gt: readAt } } }),
+      this.prisma.notification.count({ where: unreadWhere }),
     ]);
     return {
       unread,
@@ -53,16 +74,34 @@ export class NotificationsService implements OnApplicationBootstrap {
         topic: n.topic,
         text: n.text,
         object: n.object,
-        unread: n.createdAt > readAt,
+        link: n.link,
+        unread: n.reads[0] ? !n.reads[0].read : n.createdAt > baseline,
       })),
     };
   }
 
-  async readAll(user: SessionUser) {
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { notificationsReadAt: new Date() },
+  /** Отметить одно уведомление прочитанным или непрочитанным. */
+  async setRead(user: SessionUser, id: string, read: boolean) {
+    const visible = await this.prisma.notification.count({
+      where: { AND: [{ id }, this.whereFor(user)] },
     });
+    if (!visible) throw new NotFoundException('Уведомление не найдено');
+    await this.prisma.notificationRead.upsert({
+      where: { userId_notificationId: { userId: user.id, notificationId: id } },
+      create: { userId: user.id, notificationId: id, read },
+      update: { read },
+    });
+  }
+
+  /** «Прочитать все»: новая точка отсчёта, отдельные отметки больше не нужны. */
+  async readAll(user: SessionUser) {
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { notificationsReadAt: new Date() },
+      }),
+      this.prisma.notificationRead.deleteMany({ where: { userId: user.id } }),
+    ]);
   }
 
   /** Каждый день в 8:00 по времени заказчика — проверка рисков. */
@@ -104,6 +143,7 @@ export class NotificationsService implements OnApplicationBootstrap {
         await this.prisma.notification.create({
           data: {
             objectId: o.id,
+            link: `/objects/${o.id}`,
             level: f.level === 'danger' ? 'DANGER' : 'WARNING',
             topic: f.level === 'danger' ? 'Сроки' : 'Внимание',
             text: `${o.shortAddress}: ${f.text.toLowerCase()}. Готовность ${o.percent}%${

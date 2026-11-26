@@ -126,6 +126,7 @@ export class AuthController {
         data: admins.map((a) => ({
           userId: a.id,
           level: 'WARNING' as const,
+          link: '/users',
           topic: 'Пароль',
           text: `${user.fullName} (${user.login}) не может войти и просит новый пароль. Выдайте его в разделе «Пользователи».`,
           dedupeKey: `password-reset:${user.id}`,

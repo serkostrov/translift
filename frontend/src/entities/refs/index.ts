@@ -5,6 +5,7 @@ export {
   useCustomers,
   useDeleteBrigade,
   useDeleteUser,
+  useDismissResetRequest,
   useResetPassword,
   useSaveBrigade,
   useSaveContract,

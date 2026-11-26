@@ -122,6 +122,17 @@ export class UsersController {
     return { user: toDto(row), password };
   }
 
+  /**
+   * Отклонить «Забыли пароль?» без сброса: запрос не от сотрудника, пароль он вспомнил
+   * или администратор сам просил сброс и сменит пароль в профиле.
+   */
+  @Roles('ADMIN')
+  @Delete(':id/reset-request')
+  @HttpCode(204)
+  async dismissResetRequest(@Param('id', { schema: idSchema }) id: string) {
+    await this.prisma.user.update({ where: { id }, data: { passwordResetRequestedAt: null } });
+  }
+
   @Roles('ADMIN')
   @Patch(':id')
   async update(

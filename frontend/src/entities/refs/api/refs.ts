@@ -83,6 +83,15 @@ export const useCreateUser = () => {
 export const useUpdateUser = () => useSave<UserUpdate, UserDto>('users', '/users', ['brigades']);
 
 /** Сброс пароля: система придумывает временный, сотрудник выходит на всех устройствах. */
+/** Отклонить запрос «Забыли пароль?» без выдачи нового пароля. */
+export const useDismissResetRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => http<void>(`/users/${id}/reset-request`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+};
+
 export const useResetPassword = () => {
   const qc = useQueryClient();
   return useMutation({

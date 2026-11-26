@@ -132,6 +132,7 @@ export class ClaimsController {
       await tx.notification.create({
         data: {
           objectId: c.objectId,
+          link: `/claims?id=${c.id}`,
           level: 'WARNING',
           topic: 'Рекламация',
           text: `${c.object.shortAddress}: рекламация №${c.number} — ${CLAIM_KIND_LABELS[c.kind].toLowerCase()} (${c.supplier})`,

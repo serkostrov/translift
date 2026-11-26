@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router';
-import { NotificationItem, useNotifications } from '@/entities/notification';
+import { NotificationList, useNotifications } from '@/entities/notification';
 import { useObjects } from '@/entities/object';
 import { useCurrentUser } from '@/entities/session';
 import { InstallHint } from '@/features/pwa';
@@ -21,13 +21,7 @@ export function ForemanPage() {
     <div className="space-y-3">
       <h1 className="text-xl font-semibold">Мои объекты</h1>
       <InstallHint />
-      {fresh.length > 0 && (
-        <Card className="gap-0 border-amber-300 bg-amber-50 py-1 dark:border-amber-900 dark:bg-amber-950/30">
-          {fresh.map((n) => (
-            <NotificationItem key={n.id} n={n} />
-          ))}
-        </Card>
-      )}
+      {fresh.length > 0 && <NotificationList items={fresh} />}
       {user.role === 'FOREMAN' && !user.brigadeId && (
         <p className="text-sm text-muted-foreground">
           Вы пока не привязаны к бригаде — попросите руководителя.

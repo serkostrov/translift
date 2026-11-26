@@ -44,10 +44,23 @@ export type NotificationDto = {
   topic: string;
   text: string;
   object: { id: string; shortAddress: string } | null;
+  /** Куда ведёт «Перейти»: путь в приложении (`/objects/…`, `/users`, `/claims?id=…`) */
+  link: string | null;
   unread: boolean;
 };
 
 export type NotificationsDto = { items: NotificationDto[]; unread: number };
+
+export const notificationListQuerySchema = z.object({
+  /** Только непрочитанные */
+  unread: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
+});
+
+export const notificationReadSchema = z.object({ read: z.boolean() });
+export type NotificationRead = z.infer<typeof notificationReadSchema>;
 
 // ---------- Рекламации ----------
 

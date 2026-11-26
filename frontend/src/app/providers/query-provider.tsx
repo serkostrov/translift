@@ -17,9 +17,14 @@ export function QueryProvider({ children }: { children: ReactNode }) {
        * открытые экраны перезагрузятся сразу, остальные — при переходе на них.
        * Иначе легко забыть ключ (сводка, уведомления) и показать старый процент.
        * Данных немного — лишний запрос дешевле, чем устаревшая цифра.
+       * Исключение — `meta: { localOnly: true }`: мутация сама обновляет свои данные
+       * (например, «прочитано» у уведомления), остальное не трогаем.
        */
       mutationCache: new MutationCache({
-        onSuccess: () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'session' }),
+        onSuccess: (_data, _vars, _ctx, mutation) => {
+          if (mutation.meta?.localOnly) return;
+          qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'session' });
+        },
       }),
       defaultOptions: {
         queries: {
