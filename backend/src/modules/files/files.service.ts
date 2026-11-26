@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { S3Service } from '../../common/s3/s3.service.js';
-import type { FileDto, FileKind, SessionUser } from '../../contracts/index.js';
+import {
+  DOCUMENT_TYPES,
+  type FileDto,
+  type FileKind,
+  type SessionUser,
+} from '../../contracts/index.js';
 import type { File as FileRow } from '../../generated/prisma/client.js';
 import { ObjectsService } from '../objects/objects.service.js';
 
@@ -20,8 +25,17 @@ const EXT: Record<string, string> = {
   'image/webp': 'webp',
   'image/heic': 'heic',
   'image/heif': 'heif',
-  'application/pdf': 'pdf',
 };
+
+/** Что браузер может показать сам, остальное — только скачать. */
+const INLINE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+const SAFE_TYPES = new Set(Object.values(DOCUMENT_TYPES));
+
+/** Как отдавать файл: тип и можно ли открыть в браузере (для файлов, загруженных до проверки, — только скачать). */
+export function servingOf(mime: string): { contentType: string; inline: boolean } {
+  if (!SAFE_TYPES.has(mime)) return { contentType: 'application/octet-stream', inline: false };
+  return { contentType: mime, inline: INLINE_TYPES.has(mime) };
+}
 
 export type UploadInput = {
   objectId: string;
@@ -65,8 +79,23 @@ export class FilesService {
         throw new BadRequestException('Рекламация не из этого объекта');
     }
     const { file, thumb } = input;
-    if (input.kind === 'PHOTO' && !PHOTO_MIME.test(file.mimetype)) {
-      throw new BadRequestException('Фото должно быть изображением');
+    // multer отдаёт имя в latin1 — переводим в UTF-8
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8').slice(0, 300);
+    const fileExt = originalName.toLowerCase().split('.').pop() ?? '';
+    let mime: string;
+    if (input.kind === 'PHOTO') {
+      if (!PHOTO_MIME.test(file.mimetype)) {
+        throw new BadRequestException('Фото должно быть изображением');
+      }
+      mime = file.mimetype;
+    } else {
+      const known = DOCUMENT_TYPES[fileExt];
+      if (!known) {
+        throw new BadRequestException(
+          'Такой тип файла не принимаем. Можно: PDF, фото, Word, Excel, OpenDocument, RTF, TXT, CSV, DWG',
+        );
+      }
+      mime = known;
     }
     if (user.role === 'FOREMAN' && input.kind !== 'PHOTO' && !input.claimId) {
       throw new ForbiddenException('Бригадир загружает только фото');
@@ -74,11 +103,11 @@ export class FilesService {
 
     const now = new Date();
     const base = `objects/${input.objectId}/${now.getUTCFullYear()}/${randomUUID()}`;
-    const ext = EXT[file.mimetype] ?? file.originalname.split('.').pop()?.slice(0, 8) ?? 'bin';
+    const ext = input.kind === 'PHOTO' ? (EXT[mime] ?? 'jpg') : fileExt;
     const key = `${base}.${ext}`;
     const thumbKey = thumb ? `${base}_thumb.jpg` : null;
 
-    await this.s3.put(key, file.buffer, file.mimetype);
+    await this.s3.put(key, file.buffer, mime);
     if (thumb && thumbKey) await this.s3.put(thumbKey, thumb.buffer, 'image/jpeg');
 
     const row = await this.prisma.file.create({
@@ -86,11 +115,10 @@ export class FilesService {
         kind: input.kind,
         key,
         thumbKey,
-        mime: file.mimetype,
+        mime,
         size: BigInt(file.size),
         thumbSize: thumb ? BigInt(thumb.size) : null,
-        // multer отдаёт имя в latin1 — переводим в UTF-8
-        originalName: Buffer.from(file.originalname, 'latin1').toString('utf8').slice(0, 300),
+        originalName,
         title: input.title?.slice(0, 300) || null,
         takenAt: input.takenAt ? new Date(input.takenAt) : null,
         uploadedById: user.id,
@@ -110,9 +138,10 @@ export class FilesService {
     if (!useThumb && f.originalPurgedAt) throw new NotFoundException('Файл удалён при очистке');
     const key = useThumb ? (f.thumbKey as string) : f.key;
     const obj = await this.s3.get(key);
+    const serving = useThumb ? { contentType: 'image/jpeg', inline: true } : servingOf(f.mime);
     return {
       ...obj,
-      contentType: useThumb ? 'image/jpeg' : f.mime,
+      ...serving,
       fileName: useThumb ? null : f.originalName,
     };
   }

@@ -31,11 +31,11 @@ echo "Восстанавливаем базу…"
 $COMPOSE exec -T postgres pg_restore -U translift -d translift --clean --if-exists --no-owner < "$DB"
 
 echo "Восстанавливаем файлы…"
-$COMPOSE stop minio
-docker run --rm \
-  -v "${PROJECT}_miniodata:/data" \
+$COMPOSE stop seaweedfs
+docker run --rm --quiet \
+  -v "${PROJECT}_seaweeddata:/data" \
   -v "$(pwd)/backups:/backup:ro" \
-  alpine sh -c "rm -rf /data/* /data/.minio.sys && tar xzf /backup/files_$STAMP.tar.gz -C /data"
+  alpine:3.22 sh -c "find /data -mindepth 1 -delete && tar xzf /backup/files_$STAMP.tar.gz -C /data"
 
 echo "Запускаем…"
 $COMPOSE up -d

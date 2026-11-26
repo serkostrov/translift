@@ -1,11 +1,13 @@
 import {
   DELIVERY_LABELS,
+  DOCUMENT_ACCEPT,
   type FileDto,
   type MarkDto,
   type ObjectDetails,
   type TemplateStageDto,
   WORK_TYPE_LABELS,
 } from '@contracts';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
   ArchiveRestore,
@@ -14,16 +16,27 @@ import {
   Camera,
   ChevronDown,
   CircleCheck,
+  Loader2,
   MessageSquare,
   Pencil,
   Plus,
   Undo2,
+  Upload,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { ClaimStatusBadge, useClaims } from '@/entities/claim';
-import { PhotoThumbs, useMarks, useObjectFiles, useRevokeLastMark } from '@/entities/mark';
+import {
+  DocumentList,
+  markKeys,
+  PhotoThumbs,
+  uploadDocument,
+  useDeleteFile,
+  useMarks,
+  useObjectFiles,
+  useRevokeLastMark,
+} from '@/entities/mark';
 import {
   FlagBadge,
   ObjectStateBadge,
@@ -191,6 +204,7 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
         <TabsList>
           <TabsTrigger value="work">Ход работ</TabsTrigger>
           <TabsTrigger value="photos">Фото</TabsTrigger>
+          <TabsTrigger value="docs">Документы</TabsTrigger>
           <TabsTrigger value="info">Сведения</TabsTrigger>
           <TabsTrigger value="claims">Рекламации</TabsTrigger>
           {!isForeman && <TabsTrigger value="finance">Финансы</TabsTrigger>}
@@ -201,6 +215,9 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
         </TabsContent>
         <TabsContent value="photos">
           <PhotosCard objectId={o.id} />
+        </TabsContent>
+        <TabsContent value="docs">
+          <DocumentsCard objectId={o.id} canUpload={!isForeman} canDelete={canEdit} />
         </TabsContent>
         <TabsContent value="info">
           <InfoCard object={o} />
@@ -519,6 +536,97 @@ function PhotosCard({ objectId }: { objectId: string }) {
               </section>
             ))}
           </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Документы объекта (ТЗ §9): договоры, акты, паспорта, письма. Загружает офис, видят все. */
+function DocumentsCard({
+  objectId,
+  canUpload,
+  canDelete,
+}: {
+  objectId: string;
+  canUpload: boolean;
+  canDelete: boolean;
+}) {
+  const docs = useObjectFiles(objectId, 'DOCUMENT');
+  const remove = useDeleteFile();
+  const qc = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(0);
+
+  const add = async (list: FileList | null) => {
+    const files = [...(list ?? [])];
+    if (!files.length) return;
+    setUploading(files.length);
+    let ok = 0;
+    for (const f of files) {
+      try {
+        await uploadDocument(objectId, f);
+        ok++;
+      } catch (e) {
+        toast.error(`${f.name}: ${errorMessage(e)}`);
+      }
+      setUploading((n) => n - 1);
+    }
+    if (ok) toast.success(ok === 1 ? 'Документ загружен' : `Загружено документов: ${ok}`);
+    qc.invalidateQueries({ queryKey: markKeys.files(objectId, 'DOCUMENT') });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle>Документы</CardTitle>
+        {canUpload && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={uploading > 0}
+              onClick={() => inputRef.current?.click()}
+            >
+              {uploading > 0 ? <Loader2 className="animate-spin" /> : <Upload />}
+              {uploading > 0 ? `Загружаем… ${uploading}` : 'Загрузить'}
+            </Button>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              hidden
+              accept={DOCUMENT_ACCEPT}
+              onChange={(e) => {
+                void add(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {docs.isPending ? (
+          <ListSkeleton rows={3} />
+        ) : (
+          <DocumentList
+            files={docs.data ?? []}
+            empty="Документов пока нет. Договор, акты, паспорт лифта — загрузите сюда."
+            onDelete={
+              canDelete
+                ? (f) =>
+                    remove.mutate(f.id, {
+                      onSuccess: () => toast.success('Документ удалён'),
+                      onError: (e) => toast.error(errorMessage(e)),
+                    })
+                : undefined
+            }
+          />
+        )}
+        {canUpload && (
+          <p className="text-xs text-muted-foreground">
+            PDF, фото, Word, Excel, OpenDocument, RTF, TXT, CSV, DWG — до 25 МБ.
+          </p>
         )}
       </CardContent>
     </Card>

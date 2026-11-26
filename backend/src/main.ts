@@ -8,10 +8,12 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = setupApp(app);
 
-  const openApi = new DocumentBuilder().setTitle('Транслифт API').setVersion('0.1').build();
-  SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, openApi), {
-    jsonDocumentUrl: 'api/docs-json',
-  });
+  if (config.get('SWAGGER')) {
+    const openApi = new DocumentBuilder().setTitle('Транслифт API').setVersion('0.1').build();
+    SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, openApi), {
+      jsonDocumentUrl: 'api/docs-json',
+    });
+  }
 
   await app.listen(config.get('API_PORT'));
 }

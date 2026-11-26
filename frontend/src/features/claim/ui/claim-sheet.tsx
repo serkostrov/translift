@@ -1,6 +1,11 @@
-import { CLAIM_KIND_LABELS, CLAIM_STATUS_LABELS, CLAIM_STATUSES } from '@contracts';
+import {
+  CLAIM_KIND_LABELS,
+  CLAIM_STATUS_LABELS,
+  CLAIM_STATUSES,
+  DOCUMENT_ACCEPT,
+} from '@contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { ImagePlus, Loader2 } from 'lucide-react';
+import { FilePlus, ImagePlus, Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
@@ -11,7 +16,7 @@ import {
   useCommentClaim,
   useUpdateClaim,
 } from '@/entities/claim';
-import { PhotoThumbs, uploadPhoto } from '@/entities/mark';
+import { DocumentList, PhotoThumbs, uploadDocument, uploadPhoto } from '@/entities/mark';
 import { isManager, useCurrentUser } from '@/entities/session';
 import { errorMessage } from '@/shared/api/http';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
@@ -42,6 +47,7 @@ function ClaimBody({ id }: { id: string }) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const docRef = useRef<HTMLInputElement>(null);
 
   if (claim.isPending)
     return (
@@ -52,19 +58,24 @@ function ClaimBody({ id }: { id: string }) {
   if (claim.isError) return <p className="p-4 text-destructive">{errorMessage(claim.error)}</p>;
   const c = claim.data;
 
-  const addPhotos = async (files: FileList | null) => {
+  const add = async (files: FileList | null, kind: 'photo' | 'document') => {
     if (!files?.length) return;
     setUploading(true);
     try {
-      for (const f of Array.from(files)) await uploadPhoto(c.object.id, f, c.id);
-      await qc.invalidateQueries({ queryKey: claimKeys.all });
-      toast.success('Фото добавлены');
+      for (const f of Array.from(files)) {
+        if (kind === 'photo') await uploadPhoto(c.object.id, f, c.id);
+        else await uploadDocument(c.object.id, f, c.id);
+      }
+      toast.success(kind === 'photo' ? 'Фото добавлены' : 'Документы добавлены');
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
+      await qc.invalidateQueries({ queryKey: claimKeys.all });
       setUploading(false);
     }
   };
+  const photos = c.files.filter((f) => f.kind === 'PHOTO');
+  const documents = c.files.filter((f) => f.kind === 'DOCUMENT');
 
   return (
     <>
@@ -109,17 +120,28 @@ function ClaimBody({ id }: { id: string }) {
         <p className="text-sm whitespace-pre-wrap">{c.description}</p>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-medium">Фото и документы</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? <Loader2 className="animate-spin" /> : <ImagePlus />}
-              Добавить фото
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? <Loader2 className="animate-spin" /> : <ImagePlus />}
+                Фото
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => docRef.current?.click()}
+                disabled={uploading}
+              >
+                <FilePlus />
+                Документ
+              </Button>
+            </div>
             <input
               ref={fileRef}
               type="file"
@@ -127,16 +149,27 @@ function ClaimBody({ id }: { id: string }) {
               multiple
               hidden
               onChange={(e) => {
-                void addPhotos(e.target.files);
+                void add(e.target.files, 'photo');
+                e.target.value = '';
+              }}
+            />
+            <input
+              ref={docRef}
+              type="file"
+              accept={DOCUMENT_ACCEPT}
+              multiple
+              hidden
+              onChange={(e) => {
+                void add(e.target.files, 'document');
                 e.target.value = '';
               }}
             />
           </div>
-          {c.files.length ? (
-            <PhotoThumbs photos={c.files} />
-          ) : (
+          {!c.files.length && (
             <p className="text-xs text-muted-foreground">Пока ничего не приложено</p>
           )}
+          {photos.length > 0 && <PhotoThumbs photos={photos} />}
+          {documents.length > 0 && <DocumentList files={documents} />}
         </div>
 
         <Separator />

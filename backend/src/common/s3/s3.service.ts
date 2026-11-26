@@ -1,21 +1,23 @@
 import type { Readable } from 'node:stream';
 import {
+  CreateBucketCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 
 /**
- * S3 (MinIO). Наружу не открыт: файлы загружаются и отдаются через backend,
- * который проверяет права доступа.
+ * Хранилище файлов по протоколу S3 (на сервере — SeaweedFS). Наружу не открыто:
+ * файлы загружаются и отдаются через backend, который проверяет права доступа.
  */
 @Injectable()
-export class S3Service {
+export class S3Service implements OnApplicationBootstrap {
+  private readonly logger = new Logger(S3Service.name);
   readonly bucket: string;
   private readonly client: S3Client;
 
@@ -30,6 +32,19 @@ export class S3Service {
         secretAccessKey: config.get('S3_SECRET_KEY'),
       },
     });
+  }
+
+  /** Бакет создаётся при первом запуске — отдельный шаг установки не нужен. */
+  async onApplicationBootstrap() {
+    try {
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+    } catch (e) {
+      if ((e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode !== 404) {
+        throw e;
+      }
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      this.logger.log(`Создан бакет ${this.bucket}`);
+    }
   }
 
   async put(key: string, body: Buffer, contentType: string) {

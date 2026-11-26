@@ -103,12 +103,20 @@ export class FilesController {
     const f = await this.files.open(id, user, thumb);
     // id файла не меняется, содержимое тоже — можно кешировать в браузере надолго
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Файл не может выполнить скрипты от имени приложения, даже если внутри HTML.
+    // PDF — исключение: встроенный просмотрщик Chrome не работает в sandbox, а скрипты PDF
+    // и так изолированы просмотрщиком.
+    if (f.contentType !== 'application/pdf') {
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self'");
+    }
+    const mode = f.inline ? 'inline' : 'attachment';
     return new StreamableFile(f.body, {
       type: f.contentType,
       length: f.length,
       disposition: f.fileName
-        ? `inline; filename*=UTF-8''${encodeURIComponent(f.fileName)}`
-        : undefined,
+        ? `${mode}; filename*=UTF-8''${encodeURIComponent(f.fileName)}`
+        : mode,
     });
   }
 }

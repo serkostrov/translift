@@ -27,11 +27,17 @@ echo "[$(date '+%F %T')] Резервная копия $STAMP"
 $COMPOSE exec -T postgres pg_dump -U translift -d translift -Fc > "$DIR/db_$STAMP.dump"
 echo "  база: $(du -h "$DIR/db_$STAMP.dump" | cut -f1)"
 
-# 2. Файлы: архив тома MinIO (без остановки — файлы в хранилище не изменяются после записи)
-docker run --rm \
-  -v "${PROJECT}_miniodata:/data:ro" \
+# 2. Файлы: архив тома SeaweedFS. На время архивации хранилище на паузе — иначе его
+#    служебная база (метаданные файлов) может попасть в копию в несогласованном виде.
+#    Загрузки в эти секунды подождут; копия делается ночью.
+$COMPOSE pause seaweedfs
+trap '$COMPOSE unpause seaweedfs >/dev/null 2>&1 || true' EXIT
+docker run --rm --quiet \
+  -v "${PROJECT}_seaweeddata:/data:ro" \
   -v "$(pwd)/$DIR:/backup" \
-  alpine tar czf "/backup/files_$STAMP.tar.gz" -C /data .
+  alpine:3.22 tar czf "/backup/files_$STAMP.tar.gz" -C /data .
+$COMPOSE unpause seaweedfs
+trap - EXIT
 echo "  файлы: $(du -h "$DIR/files_$STAMP.tar.gz" | cut -f1)"
 
 # 3. Старые копии — удаляем

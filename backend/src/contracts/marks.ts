@@ -9,6 +9,37 @@ export const MAX_PHOTOS_PER_MARK = 10;
 export const FILE_KINDS = ['PHOTO', 'DOCUMENT'] as const;
 export type FileKind = (typeof FILE_KINDS)[number];
 
+/**
+ * Какие документы можно прикладывать: расширение → тип, с которым файл будет отдаваться.
+ * Тип, присланный браузером, не используем — его легко подделать. HTML, SVG, скрипты
+ * и архивы не принимаем: открытые с адреса приложения, они могли бы выполнить код
+ * от имени того, кто их открыл.
+ */
+export const DOCUMENT_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  rtf: 'application/rtf',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  dwg: 'application/acad',
+};
+
+/** Для `<input accept>`: `.pdf,.jpg,…` */
+export const DOCUMENT_ACCEPT = Object.keys(DOCUMENT_TYPES)
+  .map((e) => `.${e}`)
+  .join(',');
+
 /** Загруженный файл. Ссылки ведут на backend: он проверяет права и отдаёт файл из S3. */
 export type FileDto = {
   id: string;

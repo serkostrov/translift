@@ -8,6 +8,11 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /** Описание API на /api/docs. На сервере выключено: незачем показывать устройство API */
+  SWAGGER: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   /** Часовой пояс заказчика: от него считаются «сегодня», сроки и просрочки */
   APP_TIMEZONE: z.string().default('Europe/Moscow'),
   /** Название подрядчика в шапке отчёта генподрядчику */

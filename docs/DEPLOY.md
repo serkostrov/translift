@@ -15,12 +15,13 @@
 
 ```
 Браузер / телефон ──HTTPS──▶ Caddy (web) ──▶ backend (API) ──▶ PostgreSQL
-                                │                   └────────▶ MinIO (фото и документы)
+                                │                   └────────▶ SeaweedFS (фото и документы)
                                 └─ отдаёт приложение (статика, PWA)
 ```
 
 - Наружу открыт только Caddy. Он сам получает и продлевает сертификат HTTPS (Let's Encrypt).
-- База (PostgreSQL) и хранилище файлов (MinIO) работают во внутренней сети Docker. Данные лежат в томах `translift-prod_pgdata` и `translift-prod_miniodata`.
+- База (PostgreSQL) и хранилище файлов (SeaweedFS, протокол S3) работают во внутренней сети Docker. Данные лежат в томах `translift-prod_pgdata` и `translift-prod_seaweeddata`.
+- Хранилище пускает только с ключом `S3_ACCESS_KEY` / `S3_SECRET_KEY`, бакет backend создаёт сам при первом запуске.
 - При каждом запуске backend сам применяет миграции базы данных.
 
 ## Установка
@@ -55,7 +56,7 @@ cd /opt/translift/deploy && cp .env.example .env && nano .env
 
 - `DOMAIN` и `PUBLIC_URL` — ваш домен;
 - `ACME_EMAIL` — почта для уведомлений о сертификате;
-- `POSTGRES_PASSWORD`, `MINIO_PASSWORD` — длинные случайные строки, сгенерировать можно командой `openssl rand -base64 24`;
+- `POSTGRES_PASSWORD`, `S3_SECRET_KEY` — длинные случайные строки, сгенерировать можно командой `openssl rand -base64 24`;
 - `SEED_ADMIN_PASSWORD` — пароль первого администратора;
 - `COMPANY_NAME` — подрядчик в шапке отчёта генподрядчику.
 
@@ -104,7 +105,7 @@ cd /opt/translift/deploy && docker compose --env-file .env exec -e SEED_ADMIN_RE
 
 ## Резервные копии
 
-Скрипт `deploy/backup.sh` сохраняет базу (`pg_dump`) и все файлы (архив тома MinIO) в `deploy/backups`. Копии старше `BACKUP_KEEP_DAYS` дней (по умолчанию 14) удаляются.
+Скрипт `deploy/backup.sh` сохраняет базу (`pg_dump`) и все файлы (архив тома SeaweedFS) в `deploy/backups`. На время архивации файлов (секунды — минуты) хранилище ставится на паузу, загрузки в этот момент подождут. Копии старше `BACKUP_KEEP_DAYS` дней (по умолчанию 14) удаляются.
 
 Ежедневно в 3:30 — добавьте строку в `crontab -e`:
 
@@ -156,6 +157,29 @@ docker compose --env-file .env logs -f --tail=100 web
 | «Сервер недоступен» в приложении        | `docker compose ps`, логи `backend`, `/api/health`                           |
 | Не загружаются фото                     | Место на диске (экран «Хранилище»), логи `backend`                           |
 | Заканчивается место                     | Экран «Хранилище» → «Очистка старых фото», перенос старых копий из `backups` |
+
+## Безопасность сервера
+
+Приложение само закрывает доступ без входа и отдаёт файлы безопасно. Сервер настраивает администратор заказчика:
+
+- Брандмауэр: открыты только 22 (SSH), 80 и 443. Например, `ufw allow OpenSSH && ufw allow 80,443/tcp && ufw enable`.
+- Вход по SSH только по ключу, без пароля (`PasswordAuthentication no` в `/etc/ssh/sshd_config`).
+- Автоматические обновления безопасности: пакет `unattended-upgrades`.
+- База и хранилище наружу не открыты — так и оставьте, порты 5432 и 9000 не пробрасывайте.
+- Описание API (`/api/docs`) на сервере выключено. Включить на время отладки: `SWAGGER=true` в `.env` и перезапуск.
+
+## Версии образов и журналы
+
+- Версии PostgreSQL, SeaweedFS, Caddy и Node закреплены в `docker-compose.yml` и `Dockerfile`. Обновляйте их осознанно: поменяли версию → собрали → проверили на копии данных.
+- Сохраните копию образов рядом с резервными копиями — на случай, если какой-то из них исчезнет из публичного реестра (так в 2025 году случилось с MinIO, поэтому хранилище — SeaweedFS):
+
+```bash
+docker save postgres:17.10-alpine chrislusf/seaweedfs:4.54 caddy:2.11.4-alpine alpine:3.22 | gzip > backups/images.tar.gz
+```
+
+Восстановить: `gunzip -c backups/images.tar.gz | docker load`.
+
+- Журналы контейнеров ограничены: не больше 5 файлов по 10 МБ на сервис, старые удаляются сами.
 
 ## Перезапуск и остановка
 

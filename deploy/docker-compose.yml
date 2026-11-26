@@ -1,10 +1,27 @@
-# «Транслифт» на сервере: Caddy (HTTPS) → backend → PostgreSQL + MinIO.
+# «Транслифт» на сервере: Caddy (HTTPS) → backend → PostgreSQL + SeaweedFS (файлы, S3).
 # Наружу открыт только Caddy (80/443). База и хранилище файлов — во внутренней сети.
 # Запуск из папки deploy:  docker compose --env-file .env up -d --build
 name: translift-prod
 
+# Запуск SeaweedFS: конфиг S3 с ключом доступа собирается из переменных окружения.
+# В ключах не используйте кавычки и обратную косую черту (openssl rand -base64 их не выдаёт).
+x-seaweed-start: &seaweed-start >-
+  umask 077;
+  printf '{"identities":[{"name":"translift","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+  "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json;
+  chown seaweed /tmp/s3.json;
+  exec /entrypoint.sh server -dir=/data -s3 -s3.config=/tmp/s3.json -volume.max=0
+
+# Логи контейнеров: не больше 5 файлов по 10 МБ на сервис, иначе со временем займут весь диск
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   web:
+    logging: *logging
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -24,6 +41,7 @@ services:
         condition: service_healthy
 
   backend:
+    logging: *logging
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -33,14 +51,15 @@ services:
       API_PORT: 3000
       FRONTEND_ORIGIN: ${PUBLIC_URL}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      SWAGGER: ${SWAGGER:-false}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Moscow}
       COMPANY_NAME: ${COMPANY_NAME:-Транслифт}
       DATABASE_URL: postgresql://translift:${POSTGRES_PASSWORD}@postgres:5432/translift?schema=public
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://seaweedfs:8333
       S3_REGION: us-east-1
       S3_BUCKET: translift
-      S3_ACCESS_KEY: ${MINIO_USER}
-      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_FORCE_PATH_STYLE: "true"
       # Нужны только для первого запуска seed (создание администратора)
       SEED_ADMIN_LOGIN: ${SEED_ADMIN_LOGIN:-admin}
@@ -61,11 +80,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_healthy
 
   postgres:
-    image: postgres:17-alpine
+    logging: *logging
+    image: postgres:17.10-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: translift
@@ -79,37 +99,26 @@ services:
       timeout: 3s
       retries: 20
 
-  minio:
-    image: minio/minio:latest
+  # Хранилище файлов по протоколу S3. Наружу не открыто, пускает только с ключом
+  # S3_ACCESS_KEY / S3_SECRET_KEY. Бакет создаёт backend при первом запуске.
+  seaweedfs:
+    logging: *logging
+    image: chrislusf/seaweedfs:4.54
     restart: unless-stopped
-    command: server /data
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    entrypoint: ["sh", "-c", *seaweed-start]
     volumes:
-      - miniodata:/data
+      - seaweeddata:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 \"$${MINIO_ROOT_USER}\" \"$${MINIO_ROOT_PASSWORD}\" &&
-      mc mb --ignore-existing local/translift
-      "
-    environment:
-      MINIO_ROOT_USER: ${MINIO_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
-
 volumes:
   pgdata:
-  miniodata:
+  seaweeddata:
   caddy_data:
   caddy_config:

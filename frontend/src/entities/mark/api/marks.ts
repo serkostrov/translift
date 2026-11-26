@@ -39,6 +39,23 @@ export async function uploadPhoto(
   return http<FileDto>('/files', { method: 'POST', body: form });
 }
 
+/** Документ к объекту или рекламации: загружается как есть, тип проверяет сервер. */
+export function uploadDocument(objectId: string, file: File, claimId?: string): Promise<FileDto> {
+  const form = new FormData();
+  form.set('objectId', objectId);
+  form.set('kind', 'DOCUMENT');
+  if (claimId) form.set('claimId', claimId);
+  form.set('file', file, file.name);
+  return http<FileDto>('/files', { method: 'POST', body: form });
+}
+
+/** Удалить файл (руководитель). Списки файлов и рекламаций обновятся сами. */
+export function useDeleteFile() {
+  return useMutation({
+    mutationFn: (id: string) => http<void>(`/files/${id}`, { method: 'DELETE' }),
+  });
+}
+
 function useInvalidateObject(objectId: string) {
   const qc = useQueryClient();
   return (data: ObjectDetails) => {
