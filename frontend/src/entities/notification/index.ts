@@ -1,5 +1,6 @@
 export {
   linkLabel,
+  useNotificationFeed,
   useNotifications,
   useReadAllNotifications,
   useSetNotificationRead,

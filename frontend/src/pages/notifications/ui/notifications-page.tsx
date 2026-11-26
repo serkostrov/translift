@@ -1,20 +1,21 @@
-import { CheckCheck } from 'lucide-react';
 import { useState } from 'react';
 import {
   NotificationList,
-  useNotifications,
+  useNotificationFeed,
   useReadAllNotifications,
 } from '@/entities/notification';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
+import { CheckCheck } from '@/shared/ui/icons';
+import { InfiniteFooter } from '@/shared/ui/infinite-footer';
 import { ListSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 export function NotificationsPage() {
   const [onlyUnread, setOnlyUnread] = useState(false);
-  const list = useNotifications(onlyUnread);
+  const feed = useNotificationFeed(onlyUnread);
   const readAll = useReadAllNotifications();
-  const unread = list.data?.unread ?? 0;
+  const unread = feed.first?.unread ?? 0;
 
   return (
     <div className="space-y-4">
@@ -41,14 +42,17 @@ export function NotificationsPage() {
           Нажмите на уведомление, чтобы открыть и перейти в раздел.
         </p>
       </div>
-      {list.isPending ? (
+      {feed.query.isPending ? (
         <ListSkeleton rows={6} />
-      ) : !list.data?.items.length ? (
+      ) : !feed.items.length ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
           {onlyUnread ? 'Всё прочитано' : 'Уведомлений пока нет'}
         </Card>
       ) : (
-        <NotificationList items={list.data.items} groupByDay />
+        <>
+          <NotificationList items={feed.items} groupByDay />
+          <InfiniteFooter {...feed.paging} />
+        </>
       )}
     </div>
   );

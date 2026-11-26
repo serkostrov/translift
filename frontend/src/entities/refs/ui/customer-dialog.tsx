@@ -9,25 +9,27 @@ import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
 import { useSaveCustomer } from '../api/refs';
 
-/** Новый заказчик или генподрядчик. */
+/** Заказчик или генподрядчик: новый или правка существующего. */
 export function CustomerDialog({
+  customer,
   onClose,
   onSaved,
 }: {
+  customer?: CustomerDto | null;
   onClose: () => void;
   onSaved?: (customer: CustomerDto) => void;
 }) {
   const save = useSaveCustomer();
   const form = useForm<z.input<typeof customerUpsertSchema>, unknown, CustomerUpsert>({
     resolver: zodResolver(customerUpsertSchema),
-    defaultValues: { name: '', inn: '' },
+    defaultValues: { name: customer?.name ?? '', inn: customer?.inn ?? '' },
   });
   const { errors } = form.formState;
 
   const onSubmit = form.handleSubmit(async (body) => {
     try {
-      const saved = await save.mutateAsync({ body });
-      toast.success('Заказчик добавлен');
+      const saved = await save.mutateAsync({ id: customer?.id, body });
+      toast.success(customer ? 'Заказчик сохранён' : 'Заказчик добавлен');
       onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -39,7 +41,7 @@ export function CustomerDialog({
     <FormDialog
       open
       onOpenChange={(v) => !v && onClose()}
-      title="Новый заказчик"
+      title={customer ? customer.name : 'Новый заказчик'}
       description="Заказчик или генподрядчик, с которым заключён договор."
       onSubmit={onSubmit}
       submitting={save.isPending}

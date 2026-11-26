@@ -3,6 +3,7 @@ export {
   useCreateObject,
   useObject,
   useObjectHistory,
+  useObjectPages,
   useObjects,
   useUpdateObject,
 } from './api/objects';

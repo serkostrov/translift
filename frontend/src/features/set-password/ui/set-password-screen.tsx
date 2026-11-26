@@ -50,8 +50,8 @@ export function SetPasswordScreen({ user }: { user: SessionUser }) {
         <CardContent>
           <form noValidate onSubmit={form.handleSubmit((v) => save.mutate(v.next))}>
             <FieldGroup>
-              {/* Логин для менеджера паролей в браузере */}
-              <input type="text" autoComplete="username" value={user.login} readOnly hidden />
+              {/* Почта для менеджера паролей в браузере */}
+              <input type="text" autoComplete="username" value={user.email} readOnly hidden />
               <Field data-invalid={!!errors.next}>
                 <FieldLabel htmlFor="sp-next">Новый пароль</FieldLabel>
                 <Input

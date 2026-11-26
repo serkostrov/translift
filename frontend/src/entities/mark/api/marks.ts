@@ -39,6 +39,14 @@ export async function uploadPhoto(
   return http<FileDto>('/files', { method: 'POST', body: form });
 }
 
+/**
+ * Удалить свой черновик фото — загруженный в форму отметки, которую не сохранили.
+ * Ошибку глушим: не удалится сейчас — сервер уберёт черновик ночью сам.
+ */
+export function deleteDraftPhoto(id: string): Promise<void> {
+  return http<void>(`/files/${id}/draft`, { method: 'DELETE' }).catch(() => undefined);
+}
+
 /** Документ к объекту или рекламации: загружается как есть, тип проверяет сервер. */
 export function uploadDocument(objectId: string, file: File, claimId?: string): Promise<FileDto> {
   const form = new FormData();

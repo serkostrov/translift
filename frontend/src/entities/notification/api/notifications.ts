@@ -1,6 +1,7 @@
 import type { NotificationDto, NotificationsDto } from '@contracts';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type InfiniteData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '@/shared/api/http';
+import { useInfinitePages } from '@/shared/api/infinite';
 
 const key = ['notifications'] as const;
 
@@ -16,6 +17,25 @@ export function useNotifications(onlyUnread = false) {
   });
 }
 
+/** Лента уведомлений для раздела: порциями по мере прокрутки. */
+export function useNotificationFeed(onlyUnread = false) {
+  return useInfinitePages<NotificationDto, NotificationsDto>(
+    [...key, 'feed', onlyUnread ? 'unread' : 'all'],
+    (offset) =>
+      http<NotificationsDto>('/notifications', {
+        query: { offset, ...(onlyUnread ? { unread: 'true' } : {}) },
+      }),
+    { refetchInterval: 60_000 },
+  );
+}
+
+/** Отметить прочитанным в одной порции ленты; счётчик непрочитанных сдвигается на 1. */
+const markPage = (page: NotificationsDto, id: string, read: boolean): NotificationsDto => ({
+  ...page,
+  unread: page.unread + (read ? -1 : 1),
+  items: page.items.map((n) => (n.id === id ? { ...n, unread: !read } : n)),
+});
+
 /** Прочитано / не прочитано: список и счётчик меняются сразу, не дожидаясь сервера. */
 export function useSetNotificationRead() {
   const qc = useQueryClient();
@@ -25,16 +45,24 @@ export function useSetNotificationRead() {
       http<void>(`/notifications/${id}`, { method: 'PATCH', body: { read } }),
     onMutate: async ({ id, read }) => {
       await qc.cancelQueries({ queryKey: key });
-      const snapshot = qc.getQueriesData<NotificationsDto>({ queryKey: key });
-      qc.setQueriesData<NotificationsDto>({ queryKey: key }, (page) => {
-        if (!page) return page;
-        const target = page.items.find((n) => n.id === id);
-        if (!target || target.unread === !read) return page;
-        return {
-          unread: page.unread + (read ? -1 : 1),
-          items: page.items.map((n) => (n.id === id ? { ...n, unread: !read } : n)),
-        };
+      const snapshot = qc.getQueriesData({ queryKey: key });
+      // Счётчик непрочитанных сдвигаем, только если уведомление нашлось и его статус меняется
+      const known = snapshot.some(([, data]) => {
+        const pages =
+          (data as InfiniteData<NotificationsDto> | undefined)?.pages ??
+          (data ? [data as NotificationsDto] : []);
+        return pages.some((p) => p.items.some((n) => n.id === id && n.unread !== !read));
       });
+      if (!known) return { snapshot };
+      const shift = (p: NotificationsDto) => markPage(p, id, read);
+      qc.setQueriesData<NotificationsDto | InfiniteData<NotificationsDto>>(
+        { queryKey: key },
+        (data) => {
+          if (!data) return data;
+          if ('pages' in data) return { ...data, pages: data.pages.map(shift) };
+          return shift(data);
+        },
+      );
       return { snapshot };
     },
     onError: (_e, _v, ctx) => {

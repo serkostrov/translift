@@ -55,7 +55,7 @@ describe('Уведомления (e2e)', () => {
 
   it('у уведомления есть ссылка на раздел', async () => {
     const page = await list(first.agent);
-    const n = page.items.find((i) => i.link === `/claims?id=${claimId}`);
+    const n = page.items.find((i) => i.link === `/claims/${claimId}`);
     expect(n).toMatchObject({ topic: 'Рекламация', unread: true });
     notificationId = n?.id ?? '';
     expect(page.unread).toBe(1);

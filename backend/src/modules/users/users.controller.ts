@@ -38,7 +38,6 @@ type UserRow = Prisma.UserGetPayload<{ include: typeof userInclude }>;
 
 const toDto = (u: UserRow): UserDto => ({
   id: u.id,
-  login: u.login,
   fullName: u.fullName,
   email: u.email,
   phone: u.phone,

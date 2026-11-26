@@ -5,25 +5,25 @@ import {
   type ObjectDetails,
   type TemplateStageDto,
 } from '@contracts';
-import { Camera, ImagePlus, Loader2, RotateCw, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { uploadPhoto, useCreateMark } from '@/entities/mark';
+import { deleteDraftPhoto, uploadPhoto, useCreateMark } from '@/entities/mark';
 import { useTemplates } from '@/entities/refs';
 import { errorMessage } from '@/shared/api/http';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '@/shared/ui/drawer';
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/shared/ui/dialog';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { Camera, ImagePlus, Loader2, RotateCw, X } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { Textarea } from '@/shared/ui/textarea';
@@ -39,8 +39,8 @@ type PhotoItem = {
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Отметка этапа с телефона: этап, фото с камеры, комментарий, дата. */
-export function MarkStageDrawer({
+/** Отметка этапа: этап, фото с камеры, комментарий, дата. На телефоне — шторка снизу. */
+export function MarkStageDialog({
   object,
   trigger,
 }: {
@@ -49,12 +49,12 @@ export function MarkStageDrawer({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <Drawer open={open} onOpenChange={setOpen} repositionInputs={false}>
-      <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-      <DrawerContent className="max-h-[94dvh]">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
         {open && <MarkForm object={object} onDone={() => setOpen(false)} />}
-      </DrawerContent>
-    </Drawer>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -74,12 +74,19 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  // Освобождаем превью при закрытии
+  // Закрыли без сохранения — загруженные фото остались бы на сервере «без этапа»:
+  // удаляем их сразу (а те, что ещё грузятся, — как только догрузятся). Превью освобождаем.
   const photosRef = useRef(photos);
   photosRef.current = photos;
+  const closedRef = useRef(false);
+  const savedRef = useRef(false);
   useEffect(
     () => () => {
-      for (const p of photosRef.current) URL.revokeObjectURL(p.preview);
+      closedRef.current = true;
+      for (const p of photosRef.current) {
+        URL.revokeObjectURL(p.preview);
+        if (!savedRef.current && p.uploaded) void deleteDraftPhoto(p.uploaded.id);
+      }
     },
     [],
   );
@@ -93,10 +100,16 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
   const start = (item: PhotoItem) => {
     setPhotos((list) => list.map((p) => (p.key === item.key ? { ...p, status: 'uploading' } : p)));
     uploadPhoto(object.id, item.file).then(
-      (uploaded) =>
+      (uploaded) => {
+        // Форму уже закрыли, пока фото грузилось
+        if (closedRef.current && !savedRef.current) {
+          void deleteDraftPhoto(uploaded.id);
+          return;
+        }
         setPhotos((list) =>
           list.map((p) => (p.key === item.key ? { ...p, status: 'done', uploaded } : p)),
-        ),
+        );
+      },
       (e) => {
         toast.error(`Фото не загрузилось: ${errorMessage(e)}`);
         setPhotos((list) => list.map((p) => (p.key === item.key ? { ...p, status: 'error' } : p)));
@@ -125,6 +138,7 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
     setPhotos((list) => {
       const p = list.find((x) => x.key === key);
       if (p) URL.revokeObjectURL(p.preview);
+      if (p?.uploaded) void deleteDraftPhoto(p.uploaded.id);
       return list.filter((x) => x.key !== key);
     });
 
@@ -139,6 +153,7 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
       },
       {
         onSuccess: (obj) => {
+          savedRef.current = true;
           toast.success(`Этап отмечен. Выполнено ${obj.percent}%`);
           onDone();
         },
@@ -149,12 +164,12 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
 
   return (
     <>
-      <DrawerHeader className="text-left">
-        <DrawerTitle>Отметить этап</DrawerTitle>
-        <DrawerDescription>{object.shortAddress}</DrawerDescription>
-      </DrawerHeader>
+      <DialogHeader>
+        <DialogTitle>Отметить этап</DialogTitle>
+        <DialogDescription>{object.shortAddress}</DialogDescription>
+      </DialogHeader>
 
-      <div className="space-y-4 overflow-y-auto px-4 pb-2">
+      <div className="space-y-4">
         <Field>
           <FieldLabel htmlFor="stage">Этап</FieldLabel>
           <SimpleSelect
@@ -280,7 +295,7 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
         </Field>
       </div>
 
-      <DrawerFooter>
+      <DialogFooter className="sm:flex-col sm:items-stretch">
         <Button
           size="lg"
           className={cn('h-12 text-base')}
@@ -292,10 +307,10 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
         {needPhoto && !uploading && (
           <p className="text-center text-xs text-muted-foreground">Добавьте хотя бы одно фото</p>
         )}
-        <DrawerClose asChild>
+        <DialogClose asChild>
           <Button variant="ghost">Отмена</Button>
-        </DrawerClose>
-      </DrawerFooter>
+        </DialogClose>
+      </DialogFooter>
     </>
   );
 }

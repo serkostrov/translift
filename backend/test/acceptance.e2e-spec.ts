@@ -13,6 +13,7 @@ import type {
   FinanceDto,
   MarkDto,
   ObjectDetails,
+  Page,
   StageTemplateDto,
 } from '../src/contracts/index.js';
 import { createTestApp } from './helpers.js';
@@ -45,26 +46,26 @@ describe('Приёмка по ТЗ: 8 критериев', () => {
   let foremanLogin: string;
 
   const login = async (a: ReturnType<typeof agent>, l: string) =>
-    a.post('/api/auth/login').send({ method: 'login', value: l, password: PASSWORD }).expect(200);
+    a.post('/api/auth/login').send({ email: l, password: PASSWORD }).expect(200);
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
     // Тестовые пользователи заказчика: администратор, руководитель, бригадир, финансист
     const suffix = Date.now();
     const users = {
-      admin: `acc-admin-${suffix}`,
-      manager: `acc-director-${suffix}`,
-      foreman: `acc-brigadir-${suffix}`,
-      finance: `acc-finance-${suffix}`,
+      admin: `acc-admin-${suffix}@test.ru`,
+      manager: `acc-director-${suffix}@test.ru`,
+      foreman: `acc-brigadir-${suffix}@test.ru`,
+      finance: `acc-finance-${suffix}@test.ru`,
     };
     foremanLogin = users.foreman;
     const passwordHash = await hashPassword(PASSWORD);
     await prisma.user.createMany({
       data: [
-        { login: users.admin, fullName: 'Администратор', role: 'ADMIN', passwordHash },
-        { login: users.manager, fullName: 'Дмитрий Руководитель', role: 'MANAGER', passwordHash },
-        { login: users.foreman, fullName: 'Николай Бригадир', role: 'FOREMAN', passwordHash },
-        { login: users.finance, fullName: 'Ольга Финансы', role: 'FINANCE', passwordHash },
+        { email: users.admin, fullName: 'Администратор', role: 'ADMIN', passwordHash },
+        { email: users.manager, fullName: 'Дмитрий Руководитель', role: 'MANAGER', passwordHash },
+        { email: users.foreman, fullName: 'Николай Бригадир', role: 'FOREMAN', passwordHash },
+        { email: users.finance, fullName: 'Ольга Финансы', role: 'FINANCE', passwordHash },
       ],
     });
     admin = agent();
@@ -111,7 +112,7 @@ describe('Приёмка по ТЗ: 8 критериев', () => {
   });
 
   it('2. Администратор назначает бригаду', async () => {
-    const foremanUser = await prisma.user.findUniqueOrThrow({ where: { login: foremanLogin } });
+    const foremanUser = await prisma.user.findUniqueOrThrow({ where: { email: foremanLogin } });
     const brigade = await admin
       .post('/api/brigades')
       .send({ name: 'Бригада Приёмки', headcount: 3, foremanId: foremanUser.id })
@@ -160,8 +161,9 @@ describe('Приёмка по ТЗ: 8 критериев', () => {
     expect(marks[0]).toMatchObject({ comment: 'Оборудование завезли, объект открыт' });
     expect(marks[0].photos).toHaveLength(1);
 
-    const history = (await manager.get(`/api/objects/${objectId}/history`).expect(200))
-      .body as AuditEntry[];
+    const history = (
+      (await manager.get(`/api/objects/${objectId}/history`).expect(200)).body as Page<AuditEntry>
+    ).items;
     expect(history.map((h) => h.text)).toEqual(
       expect.arrayContaining([
         'Отметил этап «Открытие объекта» — 5%, фото: 1',

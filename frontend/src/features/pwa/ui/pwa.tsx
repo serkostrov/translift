@@ -1,11 +1,11 @@
 /// <reference types="vite-plugin-pwa/react" />
 
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { Download, Share, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
+import { Download, Share, X } from '@/shared/ui/icons';
 
 /** Регистрирует service worker и предлагает обновиться, когда вышла новая версия. */
 export function PwaUpdater() {

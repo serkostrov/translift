@@ -2,9 +2,12 @@
 import type {
   BrigadeDto,
   BrigadeUpsert,
+  ContractDetails,
   ContractDto,
   ContractUpsert,
+  CustomerDetails,
   CustomerDto,
+  CustomerListItem,
   CustomerUpsert,
   Role,
   StageTemplateDto,
@@ -49,14 +52,26 @@ export const useDeleteBrigade = () => useRemove('brigades', '/brigades', ['users
 export const useDeleteUser = () => useRemove('users', '/users', ['brigades']);
 
 export const useCustomers = () =>
-  useQuery({ queryKey: ['customers'], queryFn: () => http<CustomerDto[]>('/customers') });
+  useQuery({ queryKey: ['customers'], queryFn: () => http<CustomerListItem[]>('/customers') });
+/** Карточка заказчика: договоры, объекты, деньги (если можно смотреть). */
+export const useCustomer = (id: string) =>
+  useQuery({
+    queryKey: ['customers', id],
+    queryFn: () => http<CustomerDetails>(`/customers/${id}`),
+  });
 export const useSaveCustomer = () =>
   useSave<Partial<CustomerUpsert>, CustomerDto>('customers', '/customers', ['contracts']);
 
 export const useContracts = () =>
   useQuery({ queryKey: ['contracts'], queryFn: () => http<ContractDto[]>('/contracts') });
 export const useSaveContract = () =>
-  useSave<Partial<ContractUpsert>, ContractDto>('contracts', '/contracts');
+  useSave<Partial<ContractUpsert>, ContractDto>('contracts', '/contracts', ['customers']);
+/** Карточка договора: объекты списком и деньги (если можно смотреть). */
+export const useContract = (id: string) =>
+  useQuery({
+    queryKey: ['contracts', id],
+    queryFn: () => http<ContractDetails>(`/contracts/${id}`),
+  });
 
 export const useTemplates = () =>
   useQuery({

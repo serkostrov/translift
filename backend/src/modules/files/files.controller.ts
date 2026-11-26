@@ -92,6 +92,16 @@ export class FilesController {
     return this.files.list(objectId, q.kind, user);
   }
 
+  /** Черновик из формы отметки — удаляет тот, кто загрузил (в том числе бригадир). */
+  @Delete('files/:id/draft')
+  @HttpCode(204)
+  async removeDraft(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    await this.files.removeDraft(id, user);
+  }
+
   @Roles(...MANAGERS)
   @Delete('files/:id')
   @HttpCode(204)

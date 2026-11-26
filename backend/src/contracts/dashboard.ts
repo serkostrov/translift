@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dateSchema, idSchema, optionalText, requiredText } from './common.js';
+import { dateSchema, idSchema, optionalText, pageQueryShape, requiredText } from './common.js';
 import type { FileDto } from './marks.js';
 import type { ObjectListItem } from './objects.js';
 
@@ -44,12 +44,18 @@ export type NotificationDto = {
   topic: string;
   text: string;
   object: { id: string; shortAddress: string } | null;
-  /** Куда ведёт «Перейти»: путь в приложении (`/objects/…`, `/users`, `/claims?id=…`) */
+  /** Куда ведёт «Перейти»: путь в приложении (`/objects/…`, `/users`, `/claims/…`) */
   link: string | null;
   unread: boolean;
 };
 
-export type NotificationsDto = { items: NotificationDto[]; unread: number };
+export type NotificationsDto = {
+  items: NotificationDto[];
+  unread: number;
+  /** Сколько всего в выборке и откуда грузить дальше (null — всё загружено) */
+  total: number;
+  nextOffset: number | null;
+};
 
 export const notificationListQuerySchema = z.object({
   /** Только непрочитанные */
@@ -57,6 +63,7 @@ export const notificationListQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  ...pageQueryShape,
 });
 
 export const notificationReadSchema = z.object({ read: z.boolean() });
@@ -105,6 +112,7 @@ export const claimListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
 });
 export type ClaimListQuery = z.infer<typeof claimListQuerySchema>;
+export const claimPageQuerySchema = claimListQuerySchema.extend(pageQueryShape);
 
 export const claimCommentSchema = z.object({ text: requiredText(5000) });
 

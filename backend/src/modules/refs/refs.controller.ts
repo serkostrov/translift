@@ -6,30 +6,40 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Patch,
   Post,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { MANAGERS, Roles } from '../../common/auth/decorators.js';
+import { CurrentUser, MANAGERS, Roles } from '../../common/auth/decorators.js';
 import { fromDateString, toDateString } from '../../common/lib/dates.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
   type BrigadeDto,
   type BrigadeUpsert,
   brigadeUpsertSchema,
+  type ContractDetails,
   type ContractDto,
   type ContractUpsert,
+  type CustomerDetails,
   type CustomerDto,
+  type CustomerListItem,
   type CustomerUpsert,
   contractUpsertSchema,
   customerUpsertSchema,
+  hasFinanceAccess,
   idSchema,
+  type MoneySummary,
+  type ObjectListItem,
+  type SessionUser,
   type StageTemplateDto,
   type TemplateStageUpdate,
   templateStageUpdateSchema,
 } from '../../contracts/index.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { toFinanceDto } from '../finance/finance.controller.js';
+import { ObjectsService } from '../objects/objects.service.js';
 
 /** Объект «в работе» — не сдан и не в архиве. */
 export const ACTIVE_OBJECT: Prisma.LiftObjectWhereInput = {
@@ -120,20 +130,105 @@ export class BrigadesController {
   }
 }
 
+// ---------- Карточки договора и заказчика ----------
+
+/** Деньги по объектам: суммы полей «Финансов». */
+async function moneyOf(prisma: PrismaService, objectIds: string[]): Promise<MoneySummary> {
+  const rows = await prisma.objectFinance.findMany({ where: { objectId: { in: objectIds } } });
+  const sum: MoneySummary = {
+    withFinance: rows.length,
+    contractAmount: 0,
+    customerPrice: 0,
+    closedWorksAmount: 0,
+    paidAmount: 0,
+    debt: 0,
+  };
+  for (const f of rows.map((r) => toFinanceDto(r))) {
+    sum.contractAmount += f.contractAmount ?? 0;
+    sum.customerPrice += f.customerPrice ?? 0;
+    sum.closedWorksAmount += f.closedWorksAmount ?? 0;
+    sum.paidAmount += f.paidAmount ?? 0;
+    sum.debt += f.debt ?? 0;
+  }
+  for (const k of Object.keys(sum) as (keyof MoneySummary)[]) {
+    sum[k] = Math.round(sum[k] * 100) / 100;
+  }
+  return sum;
+}
+
+/** Объекты группы целиком: и в работе, и архивные. */
+async function allObjects(
+  objects: ObjectsService,
+  query: { contractId?: string; customerId?: string },
+  user: SessionUser,
+): Promise<ObjectListItem[]> {
+  const [active, archived] = await Promise.all([
+    objects.list(query, user),
+    objects.list({ ...query, archived: true }, user),
+  ]);
+  return [...active, ...archived];
+}
+
 // ---------- Заказчики ----------
 
 @ApiTags('refs')
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly objects: ObjectsService,
+  ) {}
 
   @Roles(...MANAGERS, 'FINANCE')
   @Get()
-  list(): Promise<CustomerDto[]> {
-    return this.prisma.customer.findMany({
-      select: { id: true, name: true, inn: true },
+  async list(): Promise<CustomerListItem[]> {
+    const rows = await this.prisma.customer.findMany({
+      select: {
+        id: true,
+        name: true,
+        inn: true,
+        contracts: { select: { _count: { select: { objects: true } } } },
+      },
       orderBy: { name: 'asc' },
     });
+    return rows.map(({ contracts, ...c }) => ({
+      ...c,
+      contractsCount: contracts.length,
+      objectsCount: contracts.reduce((n, k) => n + k._count.objects, 0),
+    }));
+  }
+
+  /** Карточка заказчика: договоры, объекты и деньги по всем его договорам. */
+  @Roles(...MANAGERS, 'FINANCE')
+  @Get(':id')
+  async get(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() user: SessionUser,
+  ): Promise<CustomerDetails> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+      select: { id: true, name: true, inn: true },
+    });
+    if (!customer) throw new NotFoundException('Заказчик не найден');
+    const [contracts, objects] = await Promise.all([
+      this.prisma.contract.findMany({
+        where: { customerId: id },
+        include: contractInclude,
+        orderBy: [{ isActive: 'desc' }, { date: 'desc' }],
+      }),
+      allObjects(this.objects, { customerId: id }, user),
+    ]);
+    return {
+      ...customer,
+      contracts: contracts.map(contractDto),
+      objects,
+      money: hasFinanceAccess(user)
+        ? await moneyOf(
+            this.prisma,
+            objects.map((o) => o.id),
+          )
+        : null,
+    };
   }
 
   @Roles(...MANAGERS)
@@ -184,7 +279,32 @@ const contractData = (body: Partial<ContractUpsert>) => ({
 @ApiTags('refs')
 @Controller('contracts')
 export class ContractsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly objects: ObjectsService,
+  ) {}
+
+  /** Карточка договора: объекты списком и деньги по ним. */
+  @Roles(...MANAGERS, 'FINANCE')
+  @Get(':id')
+  async get(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() user: SessionUser,
+  ): Promise<ContractDetails> {
+    const row = await this.prisma.contract.findUnique({ where: { id }, include: contractInclude });
+    if (!row) throw new NotFoundException('Договор не найден');
+    const objects = await allObjects(this.objects, { contractId: id }, user);
+    return {
+      ...contractDto(row),
+      objects,
+      money: hasFinanceAccess(user)
+        ? await moneyOf(
+            this.prisma,
+            objects.map((o) => o.id),
+          )
+        : null,
+    };
+  }
 
   @Get()
   async list(): Promise<ContractDto[]> {
@@ -245,6 +365,7 @@ export class TemplatesController {
             percent: true,
             photoRequired: true,
             setsDate: true,
+            plannedDays: true,
           },
         },
       },

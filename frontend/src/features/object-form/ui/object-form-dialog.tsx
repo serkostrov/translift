@@ -61,6 +61,7 @@ const valuesOf = (object?: ObjectDetails): FormInput => ({
   contractId: object?.contract?.id ?? null,
   brigadeId: object?.brigade?.id ?? null,
   deadline: object?.deadline ?? null,
+  plannedStartDate: object?.plannedStartDate ?? null,
 });
 
 /** Создание и редактирование объекта. */
@@ -107,7 +108,7 @@ export function ObjectFormDialog({ object, trigger }: Props) {
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{object ? 'Редактирование объекта' : 'Новый объект'}</DialogTitle>
           <DialogDescription>
@@ -192,29 +193,39 @@ export function ObjectFormDialog({ object, trigger }: Props) {
               />
             </Field>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="contractId">Договор</FieldLabel>
-                <Controller
-                  control={form.control}
-                  name="contractId"
-                  render={({ field }) => (
-                    <SimpleSelect
-                      id="contractId"
-                      value={field.value}
-                      onChange={field.onChange}
-                      noneLabel="Без договора"
-                      options={(contracts.data ?? [])
-                        .filter((c) => c.isActive || c.id === field.value)
-                        .map((c) => ({
-                          value: c.id,
-                          label: `${c.number} · ${c.customer.name}`,
-                        }))}
-                      onCreate={() => setCreating('contract')}
-                      createLabel="Новый договор"
-                    />
-                  )}
+            <Field>
+              <FieldLabel htmlFor="contractId">Договор</FieldLabel>
+              <Controller
+                control={form.control}
+                name="contractId"
+                render={({ field }) => (
+                  <SimpleSelect
+                    id="contractId"
+                    value={field.value}
+                    onChange={field.onChange}
+                    noneLabel="Без договора"
+                    options={(contracts.data ?? [])
+                      .filter((c) => c.isActive || c.id === field.value)
+                      .map((c) => ({
+                        value: c.id,
+                        label: `${c.number} · ${c.customer.name}`,
+                      }))}
+                    onCreate={() => setCreating('contract')}
+                    createLabel="Новый договор"
+                  />
+                )}
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field data-invalid={!!errors.plannedStartDate}>
+                <FieldLabel htmlFor="plannedStartDate">Начало работ</FieldLabel>
+                <Input
+                  id="plannedStartDate"
+                  type="date"
+                  {...form.register('plannedStartDate', { setValueAs: (v) => v || null })}
                 />
+                <FieldError errors={[errors.plannedStartDate]} />
               </Field>
               <Field data-invalid={!!errors.deadline}>
                 <FieldLabel htmlFor="deadline">Срок по договору</FieldLabel>
@@ -225,6 +236,10 @@ export function ObjectFormDialog({ object, trigger }: Props) {
                 />
                 <FieldError errors={[errors.deadline]} />
               </Field>
+              <FieldDescription className="col-span-2 -mt-1">
+                От начала работ по плановым дням этапов считаются плановые даты — их видно в «Ходе
+                работ» и «Сведениях».
+              </FieldDescription>
             </div>
 
             <Field>

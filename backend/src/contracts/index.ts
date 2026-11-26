@@ -1,6 +1,7 @@
 export * from './auth.js';
 export * from './common.js';
 export * from './dashboard.js';
+export * from './directory.js';
 export * from './marks.js';
 export * from './objects.js';
 export * from './refs.js';

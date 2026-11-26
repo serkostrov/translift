@@ -5,16 +5,26 @@ import type {
   ObjectListItem,
   ObjectListQuery,
   ObjectUpdate,
+  Page,
 } from '@contracts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '@/shared/api/http';
+import { useInfinitePages } from '@/shared/api/infinite';
 
 export const objectKeys = {
   all: ['objects'] as const,
   list: (q: ObjectListQuery) => ['objects', 'list', q] as const,
   detail: (id: string) => ['objects', 'detail', id] as const,
   history: (id: string) => ['objects', 'history', id] as const,
+  page: (q: ObjectListQuery) => ['objects', 'page', q] as const,
 };
+
+/** Объекты порциями — для раздела «Объекты» с бесконечной прокруткой. */
+export function useObjectPages(query: ObjectListQuery = {}) {
+  return useInfinitePages<ObjectListItem>(objectKeys.page(query), (offset) =>
+    http<Page<ObjectListItem>>('/objects/page', { query: { ...query, offset } }),
+  );
+}
 
 export function useObjects(query: ObjectListQuery = {}) {
   return useQuery({
@@ -31,11 +41,11 @@ export function useObject(id: string) {
   });
 }
 
+/** История объекта порциями: свежие сверху, старые догружаются при прокрутке. */
 export function useObjectHistory(id: string) {
-  return useQuery({
-    queryKey: objectKeys.history(id),
-    queryFn: () => http<AuditEntry[]>(`/objects/${id}/history`),
-  });
+  return useInfinitePages<AuditEntry>(objectKeys.history(id), (offset) =>
+    http<Page<AuditEntry>>(`/objects/${id}/history`, { query: { offset } }),
+  );
 }
 
 export function useCreateObject() {

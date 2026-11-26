@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { z } from 'zod';
 import { AuditService, diff } from '../../common/audit/audit.service.js';
 import { CurrentUser, MANAGERS, Roles } from '../../common/auth/decorators.js';
 import { fromDateString, toDateString } from '../../common/lib/dates.js';
@@ -24,8 +25,10 @@ import {
   claimCommentSchema,
   claimCreateSchema,
   claimListQuerySchema,
+  claimPageQuerySchema,
   claimUpdateSchema,
   idSchema,
+  type Page,
   type SessionUser,
 } from '../../contracts/index.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -63,11 +66,7 @@ export class ClaimsController {
     private readonly audit: AuditService,
   ) {}
 
-  @Get()
-  async list(
-    @Query({ schema: claimListQuerySchema }) q: ClaimListQuery,
-    @CurrentUser() user: SessionUser,
-  ): Promise<ClaimDto[]> {
+  private where(q: ClaimListQuery, user: SessionUser): Prisma.ClaimWhereInput {
     const where: Prisma.ClaimWhereInput = { objectId: q.objectId, status: q.status };
     if (q.q) {
       where.OR = [
@@ -77,12 +76,41 @@ export class ClaimsController {
       ];
     }
     if (user.role === 'FOREMAN') where.object = { brigadeId: user.brigadeId ?? '' };
+    return where;
+  }
+
+  @Get()
+  async list(
+    @Query({ schema: claimListQuerySchema }) q: ClaimListQuery,
+    @CurrentUser() user: SessionUser,
+  ): Promise<ClaimDto[]> {
     const rows = await this.prisma.claim.findMany({
-      where,
+      where: this.where(q, user),
       include: listInclude,
       orderBy: { number: 'desc' },
     });
     return rows.map(toDto);
+  }
+
+  /** Постранично — для раздела «Рекламации» с бесконечной прокруткой. */
+  @Get('page')
+  async page(
+    @Query({ schema: claimPageQuerySchema }) q: z.output<typeof claimPageQuerySchema>,
+    @CurrentUser() user: SessionUser,
+  ): Promise<Page<ClaimDto>> {
+    const where = this.where(q, user);
+    const [rows, total] = await Promise.all([
+      this.prisma.claim.findMany({
+        where,
+        include: listInclude,
+        orderBy: { number: 'desc' },
+        skip: q.offset,
+        take: q.limit,
+      }),
+      this.prisma.claim.count({ where }),
+    ]);
+    const next = q.offset + rows.length;
+    return { items: rows.map(toDto), total, nextOffset: next < total ? next : null };
   }
 
   /** Подсказки поставщиков из прошлых рекламаций. */
@@ -132,7 +160,7 @@ export class ClaimsController {
       await tx.notification.create({
         data: {
           objectId: c.objectId,
-          link: `/claims?id=${c.id}`,
+          link: `/claims/${c.id}`,
           level: 'WARNING',
           topic: 'Рекламация',
           text: `${c.object.shortAddress}: рекламация №${c.number} — ${CLAIM_KIND_LABELS[c.kind].toLowerCase()} (${c.supplier})`,

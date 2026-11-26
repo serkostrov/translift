@@ -2,6 +2,7 @@ import { statfs } from 'node:fs/promises';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { StorageService } from './storage.service.js';
 
 /** Уведомления старше — удаляются (с отметками о прочтении) */
 export const NOTIFICATIONS_KEEP_DAYS = 180;
@@ -20,13 +21,16 @@ const DAY = 86_400_000;
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   @Cron('0 4 * * *', { timeZone: 'Europe/Moscow' })
   async nightly() {
     const r = await this.run();
     this.logger.log(
-      `Обслуживание: сессий удалено ${r.sessions}, уведомлений ${r.notifications}` +
+      `Обслуживание: сессий удалено ${r.sessions}, уведомлений ${r.notifications}, черновиков фото ${r.drafts}` +
         (r.diskFree !== null ? `, свободно на диске ${(r.diskFree * 100).toFixed(0)}%` : ''),
     );
   }
@@ -46,8 +50,9 @@ export class MaintenanceService {
         where: { createdAt: { lt: new Date(now.getTime() - NOTIFICATIONS_KEEP_DAYS * DAY) } },
       }),
     ]);
+    const drafts = await this.storage.purgeDrafts();
     const diskFree = await this.checkDisk(now);
-    return { sessions: sessions.count, notifications: notifications.count, diskFree };
+    return { sessions: sessions.count, notifications: notifications.count, drafts, diskFree };
   }
 
   /** Доля свободного места; при нехватке — уведомление администраторам. */

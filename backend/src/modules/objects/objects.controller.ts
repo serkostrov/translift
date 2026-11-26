@@ -1,17 +1,23 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { z } from 'zod';
 import { CurrentUser, MANAGERS, Roles } from '../../common/auth/decorators.js';
 import {
   type AuditEntry,
+  historyQuerySchema,
   idSchema,
   type ObjectCreate,
   type ObjectDetails,
   type ObjectListItem,
   type ObjectListQuery,
+  type ObjectPageQuery,
   type ObjectUpdate,
   objectCreateSchema,
   objectListQuerySchema,
+  objectPageQuerySchema,
   objectUpdateSchema,
+  type Page,
+  pageOf,
   type SessionUser,
 } from '../../contracts/index.js';
 import { ObjectsService } from './objects.service.js';
@@ -29,6 +35,16 @@ export class ObjectsController {
     return this.objects.list(query, user);
   }
 
+  /** Список постранично — для экрана «Объекты» с бесконечной прокруткой. */
+  @Get('page')
+  async page(
+    @Query({ schema: objectPageQuerySchema }) query: ObjectPageQuery,
+    @CurrentUser() user: SessionUser,
+  ): Promise<Page<ObjectListItem>> {
+    const { offset, limit, ...filters } = query;
+    return pageOf(await this.objects.list(filters, user), offset, limit);
+  }
+
   @Get(':id')
   get(
     @Param('id', { schema: idSchema }) id: string,
@@ -40,9 +56,10 @@ export class ObjectsController {
   @Get(':id/history')
   history(
     @Param('id', { schema: idSchema }) id: string,
+    @Query({ schema: historyQuerySchema }) page: z.output<typeof historyQuerySchema>,
     @CurrentUser() user: SessionUser,
-  ): Promise<AuditEntry[]> {
-    return this.objects.history(id, user);
+  ): Promise<Page<AuditEntry>> {
+    return this.objects.history(id, user, page);
   }
 
   @Roles(...MANAGERS)

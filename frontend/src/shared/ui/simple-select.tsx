@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Plus } from '@/shared/ui/icons';
 import {
   Select,
   SelectContent,

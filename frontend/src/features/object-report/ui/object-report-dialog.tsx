@@ -1,4 +1,3 @@
-import { FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { apiUrl, download, errorMessage } from '@/shared/api/http';
@@ -13,6 +12,7 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import { Field, FieldLabel } from '@/shared/ui/field';
+import { FileSpreadsheet, Loader2 } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 
 const iso = (d: Date) => d.toLocaleDateString('en-CA');
@@ -52,7 +52,7 @@ export function ObjectReportDialog({
           Отчёт
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Отчёт по объекту</DialogTitle>
           <DialogDescription>

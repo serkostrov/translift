@@ -98,7 +98,7 @@ export function ObjectDatesDialog({
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Поставка и даты</DialogTitle>
           <DialogDescription>{object.shortAddress}</DialogDescription>

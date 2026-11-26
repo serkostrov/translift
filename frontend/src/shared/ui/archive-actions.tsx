@@ -1,4 +1,3 @@
-import { Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   AlertDialog,
@@ -11,6 +10,7 @@ import {
   AlertDialogTitle,
 } from '@/shared/ui/alert-dialog';
 import { Button } from '@/shared/ui/button';
+import { Archive, ArchiveRestore, Trash2 } from '@/shared/ui/icons';
 
 type Props = {
   /** Сейчас в архиве */

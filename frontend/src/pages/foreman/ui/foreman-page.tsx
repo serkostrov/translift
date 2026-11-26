@@ -1,10 +1,10 @@
-import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router';
 import { NotificationList, useNotifications } from '@/entities/notification';
 import { useObjects } from '@/entities/object';
 import { useCurrentUser } from '@/entities/session';
 import { InstallHint } from '@/features/pwa';
 import { Card } from '@/shared/ui/card';
+import { ChevronRight } from '@/shared/ui/icons';
 import { Progress } from '@/shared/ui/progress';
 import { CardsSkeleton } from '@/shared/ui/skeletons';
 

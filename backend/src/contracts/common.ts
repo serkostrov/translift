@@ -123,3 +123,23 @@ export const optionalEmailSchema = z
   .transform((v) => (v === '' ? null : v))
   .nullable()
   .optional();
+
+// ---------- Постраничная загрузка ----------
+
+/** Сколько записей отдавать за раз: столько грузит и бесконечная прокрутка. */
+export const PAGE_SIZE = 30;
+
+/** `?limit=&offset=` — общая часть запросов постраничных списков. */
+export const pageQueryShape = {
+  limit: z.coerce.number().int().min(1).max(100).default(PAGE_SIZE),
+  offset: z.coerce.number().int().min(0).default(0),
+};
+
+/** Страница списка: записи, сколько всего и с какого места грузить дальше (null — всё). */
+export type Page<T> = { items: T[]; total: number; nextOffset: number | null };
+
+export function pageOf<T>(all: T[], offset: number, limit: number): Page<T> {
+  const items = all.slice(offset, offset + limit);
+  const next = offset + items.length;
+  return { items, total: all.length, nextOffset: next < all.length ? next : null };
+}

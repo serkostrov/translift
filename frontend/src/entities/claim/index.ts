@@ -1,6 +1,7 @@
 export {
   claimKeys,
   useClaim,
+  useClaimPages,
   useClaims,
   useCommentClaim,
   useCreateClaim,

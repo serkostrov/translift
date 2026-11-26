@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { cn } from '@/shared/lib/utils';
 import { Card } from '@/shared/ui/card';
+import { InfiniteFooter, type Paging } from '@/shared/ui/infinite-footer';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 
 export type DataColumn<T> = {
@@ -28,6 +29,12 @@ type Props<T> = {
   /** С какой ширины показывать таблицу (по умолчанию md, 768px) */
   breakpoint?: 'md' | 'lg';
   className?: string;
+  /**
+   * Список с сервера постранично: rows — уже загруженное, footer догружает остальное.
+   * Без него длинный список рисуется порциями по pageSize по мере прокрутки.
+   */
+  paging?: Paging;
+  pageSize?: number;
 };
 
 /**
@@ -42,8 +49,20 @@ export function DataList<T>({
   empty,
   breakpoint = 'md',
   className,
+  paging,
+  pageSize = 50,
 }: Props<T>) {
+  // Порционная отрисовка: сотни строк сразу тормозят телефон
+  const [limit, setLimit] = useState(pageSize);
   if (!rows.length && empty) return <>{empty}</>;
+  const visible = paging ? rows : rows.slice(0, limit);
+  const footer: Paging = paging ?? {
+    hasMore: rows.length > limit,
+    loading: false,
+    onMore: () => setLimit((l) => l + pageSize),
+    shown: visible.length,
+    total: rows.length > pageSize ? rows.length : 0,
+  };
   const by = (place: DataColumn<T>['mobile']) =>
     columns.filter((c) => (c.mobile ?? 'meta') === place);
   const title = by('title');
@@ -65,7 +84,7 @@ export function DataList<T>({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
+            {visible.map((row) => (
               <TableRow
                 key={rowKey(row)}
                 className={onRowClick ? 'cursor-pointer' : undefined}
@@ -85,7 +104,7 @@ export function DataList<T>({
       <div
         className={cn('grid gap-2 sm:grid-cols-2', breakpoint === 'md' ? 'md:hidden' : 'lg:hidden')}
       >
-        {rows.map((row) => {
+        {visible.map((row) => {
           const content = (
             <Card key={rowKey(row)} className="h-full gap-1.5 p-4 text-sm">
               {(title.length > 0 || aside.length > 0) && (
@@ -135,6 +154,7 @@ export function DataList<T>({
           );
         })}
       </div>
+      <InfiniteFooter {...footer} />
     </div>
   );
 }

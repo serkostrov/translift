@@ -398,7 +398,10 @@ export class ReportsService {
     const fromAt = startOfDayIn(from, this.tz);
     const toAt = endOfDayIn(to, this.tz);
 
-    let items = await this.objects.list({ contractId: q.contractId, brigade: q.brigadeId }, user);
+    let items = await this.objects.list(
+      { contractId: q.contractId, brigade: q.brigadeId, sort: 'deadline' },
+      user,
+    );
     if (q.ids?.length) items = items.filter((o) => q.ids?.includes(o.id));
     if (!q.includeDone) items = items.filter((o) => o.state !== 'DONE');
     const ids = items.map((o) => o.id);

@@ -7,7 +7,6 @@ import {
   userCreateSchema,
 } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Copy } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
@@ -21,8 +20,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog';
+import { EmailInput } from '@/shared/ui/email-input';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { FormDialog } from '@/shared/ui/form-dialog';
+import { Copy } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 import { PhoneInput } from '@/shared/ui/phone-input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
@@ -49,7 +50,6 @@ export function CreateUserDialog({
   const form = useForm<UserCreate, unknown, z.output<typeof userCreateSchema>>({
     resolver: zodResolver(userCreateSchema),
     defaultValues: {
-      login: '',
       fullName: '',
       email: '',
       phone: '',
@@ -78,11 +78,12 @@ export function CreateUserDialog({
         <Input id="fullName" {...form.register('fullName')} />
         <FieldError errors={[errors.fullName]} />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field data-invalid={!!errors.login}>
-          <FieldLabel htmlFor="login">Логин</FieldLabel>
-          <Input id="login" autoCapitalize="none" autoComplete="off" {...form.register('login')} />
-          <FieldError errors={[errors.login]} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field data-invalid={!!errors.email}>
+          <FieldLabel htmlFor="email">Почта</FieldLabel>
+          <EmailInput id="email" autoComplete="off" {...form.register('email')} />
+          <FieldDescription>По ней сотрудник входит</FieldDescription>
+          <FieldError errors={[errors.email]} />
         </Field>
         <Field>
           <FieldLabel htmlFor="role">Роль</FieldLabel>
@@ -101,40 +102,22 @@ export function CreateUserDialog({
           />
         </Field>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field data-invalid={!!errors.phone}>
-          <FieldLabel htmlFor="phone">Телефон</FieldLabel>
-          <Controller
-            control={form.control}
-            name="phone"
-            render={({ field }) => (
-              <PhoneInput
-                id="phone"
-                value={field.value}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-              />
-            )}
-          />
-          <FieldError errors={[errors.phone]} />
-        </Field>
-        <Field data-invalid={!!errors.email}>
-          <FieldLabel htmlFor="email">Почта</FieldLabel>
-          <Input
-            id="email"
-            type="email"
-            inputMode="email"
-            autoCapitalize="none"
-            autoComplete="off"
-            placeholder="ivanov@mail.ru"
-            {...form.register('email')}
-          />
-          <FieldError errors={[errors.email]} />
-        </Field>
-      </div>
-      <FieldDescription>
-        Войти можно по логину, телефону или почте — любому из них.
-      </FieldDescription>
+      <Field data-invalid={!!errors.phone}>
+        <FieldLabel htmlFor="phone">Телефон</FieldLabel>
+        <Controller
+          control={form.control}
+          name="phone"
+          render={({ field }) => (
+            <PhoneInput
+              id="phone"
+              value={field.value}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+            />
+          )}
+        />
+        <FieldError errors={[errors.phone]} />
+      </Field>
       <Field data-invalid={!!errors.password}>
         <FieldLabel htmlFor="password">Пароль</FieldLabel>
         <Input
@@ -153,7 +136,7 @@ export function CreateUserDialog({
   );
 }
 
-/** Логин и временный пароль: показываются один раз, дальше их не узнать. */
+/** Почта и временный пароль: пароль показывается один раз, дальше его не узнать. */
 export function PasswordIssuedDialog({
   issued,
   onClose,
@@ -164,7 +147,7 @@ export function PasswordIssuedDialog({
   const { user, password } = issued;
   const text = [
     `Транслифт: ${window.location.origin}`,
-    `Логин: ${user.login}`,
+    `Почта: ${user.email}`,
     `Пароль: ${password}`,
     'При входе система попросит придумать свой пароль.',
   ].join('\n');
@@ -180,7 +163,7 @@ export function PasswordIssuedDialog({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Данные для входа</DialogTitle>
           <DialogDescription>
@@ -189,8 +172,8 @@ export function PasswordIssuedDialog({
           </DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2 rounded-lg bg-muted p-4">
-          <dt className="text-sm text-muted-foreground">Логин</dt>
-          <dd className="font-mono text-lg break-all">{user.login}</dd>
+          <dt className="text-sm text-muted-foreground">Почта</dt>
+          <dd className="font-mono text-lg break-all">{user.email}</dd>
           <dt className="text-sm text-muted-foreground">Пароль</dt>
           <dd className="font-mono text-lg font-semibold tracking-wide break-all select-all">
             {password}

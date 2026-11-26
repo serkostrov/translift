@@ -15,7 +15,7 @@ import { createTestApp, signIn } from './helpers.js';
 describe('Пользователи и восстановление пароля (e2e)', () => {
   let app: NestExpressApplication;
   let admin: Awaited<ReturnType<typeof signIn>>;
-  const login = `new-brigadir-${Date.now()}`;
+  const email = `new-brigadir-${Date.now()}@test.ru`;
   let userId: string;
   let tempPassword: string;
 
@@ -33,21 +33,18 @@ describe('Пользователи и восстановление пароля 
   it('администратор заводит бригадира без пароля — система придумывает временный', async () => {
     const res = await admin.agent
       .post('/api/users')
-      .send({ login, fullName: 'Сергей Новый', role: 'FOREMAN', password: '' })
+      .send({ email, fullName: 'Сергей Новый', role: 'FOREMAN', password: '' })
       .expect(201);
     const body = res.body as UserWithPassword;
     expect(body.password).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
-    expect(body.user).toMatchObject({ login, mustChangePassword: true, lastLoginAt: null });
+    expect(body.user).toMatchObject({ email, mustChangePassword: true, lastLoginAt: null });
     userId = body.user.id;
     tempPassword = body.password;
   });
 
   it('с временным паролем пускает только сменить пароль', async () => {
     const a = anon();
-    const me = await a
-      .post('/api/auth/login')
-      .send({ method: 'login', value: login, password: tempPassword })
-      .expect(200);
+    const me = await a.post('/api/auth/login').send({ email, password: tempPassword }).expect(200);
     expect(me.body.mustChangePassword).toBe(true);
     await a.get('/api/auth/me').expect(200);
     await a.get('/api/objects').expect(403);
@@ -62,13 +59,10 @@ describe('Пользователи и восстановление пароля 
   });
 
   it('«Забыли пароль?» уходит администраторам и не выдаёт, есть ли логин', async () => {
+    await anon().post('/api/auth/password-reset-request').send({ email }).expect(204);
     await anon()
       .post('/api/auth/password-reset-request')
-      .send({ method: 'login', value: login })
-      .expect(204);
-    await anon()
-      .post('/api/auth/password-reset-request')
-      .send({ method: 'login', value: 'no-such-user-at-all' })
+      .send({ email: 'no-such-user-at-all@test.ru' })
       .expect(204);
 
     const users = (await admin.agent.get('/api/users').expect(200)).body as UserDto[];
@@ -78,29 +72,23 @@ describe('Пользователи и восстановление пароля 
 
     const page = (await admin.agent.get('/api/notifications').expect(200)).body as NotificationsDto;
     expect(page.items.map((n) => n.text)).toEqual(
-      expect.arrayContaining([expect.stringContaining(`(${login}) не может войти`)]),
+      expect.arrayContaining([expect.stringContaining(`(${email}) не может войти`)]),
     );
   });
 
   it('сброс пароля: новый временный, все устройства выходят', async () => {
     const device = anon();
-    await device
-      .post('/api/auth/login')
-      .send({ method: 'login', value: login, password: 'my-own-password-1' })
-      .expect(200);
+    await device.post('/api/auth/login').send({ email, password: 'my-own-password-1' }).expect(200);
 
     const res = await admin.agent.post(`/api/users/${userId}/reset-password`).expect(200);
     const body = res.body as UserWithPassword;
     expect(body.user).toMatchObject({ mustChangePassword: true, resetRequestedAt: null });
     await device.get('/api/auth/me').expect(401);
 
-    await anon()
-      .post('/api/auth/login')
-      .send({ method: 'login', value: login, password: 'my-own-password-1' })
-      .expect(401);
+    await anon().post('/api/auth/login').send({ email, password: 'my-own-password-1' }).expect(401);
     const again = await anon()
       .post('/api/auth/login')
-      .send({ method: 'login', value: login, password: body.password })
+      .send({ email, password: body.password })
       .expect(200);
     expect(again.body.mustChangePassword).toBe(true);
   });
@@ -111,67 +99,68 @@ describe('Пользователи и восстановление пароля 
     await foreman.agent.post(`/api/users/${userId}/reset-password`).expect(403);
   });
 
-  it('администратор меняет логин и отключает доступ', async () => {
+  it('администратор меняет почту и отключает доступ', async () => {
+    const renamed = email.replace('@', '-renamed@');
     const res = await admin.agent
       .patch(`/api/users/${userId}`)
-      .send({ login: `${login}-renamed`, isActive: false })
+      .send({ email: renamed.toUpperCase(), isActive: false })
       .expect(200);
-    expect(res.body).toMatchObject({ login: `${login}-renamed`, isActive: false });
+    expect(res.body).toMatchObject({ email: renamed, isActive: false });
   });
 
-  it('почта и телефон: проверка, приведение к одному виду и вход любым способом', async () => {
+  it('вход только по почте; почта обязательна, телефон — контакт', async () => {
     const tail = String(Date.now()).slice(-7);
-    const email = `Foreman.${tail}@Example.RU`;
+    const mail = `Foreman.${tail}@Example.RU`;
+    // Без почты, с неверной почтой или телефоном — не создаётся
+    await admin.agent.post('/api/users').send({ fullName: 'X', role: 'FOREMAN' }).expect(400);
     await admin.agent
       .post('/api/users')
-      .send({ login: `bad-${tail}`, fullName: 'X', role: 'FOREMAN', email: 'не почта' })
+      .send({ fullName: 'X', role: 'FOREMAN', email: 'не почта' })
       .expect(400);
     await admin.agent
       .post('/api/users')
-      .send({ login: `bad-${tail}`, fullName: 'X', role: 'FOREMAN', phone: '12345' })
+      .send({ fullName: 'X', role: 'FOREMAN', email: `x-${tail}@test.ru`, phone: '12345' })
       .expect(400);
 
     const created = await admin.agent
       .post('/api/users')
       .send({
-        login: `contacts-${tail}`,
         fullName: 'Контакты Тест',
         role: 'FOREMAN',
-        email,
+        email: mail,
         phone: `8 (900) ${tail.slice(0, 3)}-${tail.slice(3, 5)}-${tail.slice(5)}`,
         password: 'contacts-pass-1',
       })
       .expect(201);
     const user = (created.body as UserWithPassword).user;
-    expect(user.email).toBe(email.toLowerCase());
+    expect(user.email).toBe(mail.toLowerCase());
     expect(user.phone).toBe(`+7900${tail}`);
     expect(user.canDelete).toBe(true);
 
-    // Тот же телефон в другом написании — занят
-    const dup = await admin.agent
+    // Та же почта в другом регистре и тот же телефон в другом написании — заняты
+    const dupMail = await admin.agent
       .post('/api/users')
-      .send({ login: `dup-${tail}`, fullName: 'Y', role: 'FOREMAN', phone: `+7 900 ${tail}` })
+      .send({ fullName: 'Y', role: 'FOREMAN', email: mail.toUpperCase() })
       .expect(409);
-    expect(dup.body.message).toBe('Этот телефон уже указан у другого сотрудника');
+    expect(dupMail.body.message).toBe('Эта почта уже указана у другого сотрудника');
+    const dupPhone = await admin.agent
+      .post('/api/users')
+      .send({ fullName: 'Y', role: 'FOREMAN', email: `y-${tail}@test.ru`, phone: `+7 900 ${tail}` })
+      .expect(409);
+    expect(dupPhone.body.message).toBe('Этот телефон уже указан у другого сотрудника');
 
-    for (const [method, value] of [
-      ['login', `CONTACTS-${tail}`],
-      ['email', email],
-      ['phone', `+7 (900) ${tail}`],
-    ]) {
-      await anon()
-        .post('/api/auth/login')
-        .send({ method, value, password: 'contacts-pass-1' })
-        .expect(200);
-    }
-    // Способ входа задаёт проверку поля
     await anon()
       .post('/api/auth/login')
-      .send({ method: 'phone', value: 'contacts', password: 'contacts-pass-1' })
+      .send({ email: mail.toUpperCase(), password: 'contacts-pass-1' })
+      .expect(200);
+    // По телефону и старому формату запроса не пускает
+    await anon()
+      .post('/api/auth/login')
+      .send({ method: 'phone', value: `+7900${tail}`, password: 'contacts-pass-1' })
       .expect(400);
     const wrong = await anon()
       .post('/api/auth/login')
-      .send({ method: 'email', value: 'nobody@example.ru', password: 'x' })
+      .send({ email: 'nobody@example.ru', password: 'x' })
       .expect(401);
     expect(wrong.body.message).toBe('Неверная почта или пароль');
 
@@ -222,7 +211,7 @@ describe('Пользователи и восстановление пароля 
     const foreman = await signIn(app, 'FOREMAN');
     await request(app.getHttpServer())
       .post('/api/auth/password-reset-request')
-      .send({ method: 'login', value: foreman.user.login })
+      .send({ email: foreman.user.email })
       .expect(204);
     const second = await signIn(app, 'ADMIN');
     const before = ((await second.agent.get('/api/users').expect(200)).body as UserDto[]).find(
@@ -246,7 +235,7 @@ describe('Пользователи и восстановление пароля 
     const attempt = (password: string) =>
       request(app.getHttpServer())
         .post('/api/auth/login')
-        .send({ method: 'login', value: victim.user.login, password });
+        .send({ email: victim.user.email, password });
 
     for (let i = 0; i < 10; i++) await attempt('wrong-password').expect(401);
     // Даже верный пароль не пускает, пока блокировка
@@ -258,7 +247,7 @@ describe('Пользователи и восстановление пароля 
     const page = (await second.agent.get('/api/notifications').expect(200))
       .body as NotificationsDto;
     expect(
-      page.items.some((n) => n.text.includes(`(${victim.user.login})`) && n.link === '/users'),
+      page.items.some((n) => n.text.includes(`(${victim.user.email})`) && n.link === '/users'),
     ).toBe(true);
 
     await second.agent.delete(`/api/users/${victim.user.id}/lock`).expect(204);

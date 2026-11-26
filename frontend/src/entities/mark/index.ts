@@ -1,4 +1,5 @@
 export {
+  deleteDraftPhoto,
   markKeys,
   uploadDocument,
   uploadPhoto,

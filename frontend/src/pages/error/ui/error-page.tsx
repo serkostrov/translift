@@ -1,7 +1,7 @@
-import { House, RotateCw } from 'lucide-react';
 import { isRouteErrorResponse, useRouteError } from 'react-router';
 import { Button } from '@/shared/ui/button';
 import { ElevatorScene } from '@/shared/ui/elevator-scene';
+import { House, RotateCw } from '@/shared/ui/icons';
 
 /** Ошибка при отрисовке страницы (errorElement роутера). */
 export function ErrorPage() {

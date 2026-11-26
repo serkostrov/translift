@@ -9,7 +9,6 @@ import {
   userUpdateSchema,
 } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { KeyRound, Plus, Search, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -43,8 +42,10 @@ import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { DataList } from '@/shared/ui/data-list';
+import { EmailInput } from '@/shared/ui/email-input';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { FormDialog } from '@/shared/ui/form-dialog';
+import { KeyRound, Plus, Search, ShieldAlert } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 import { PhoneInput } from '@/shared/ui/phone-input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
@@ -53,7 +54,7 @@ import { ListSkeleton } from '@/shared/ui/skeletons';
 const roleOptions = ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
 
 /**
- * Пользователи: администратор заводит сотрудников, выдаёт логины и временные пароли,
+ * Пользователи: администратор заводит сотрудников (вход по почте), выдаёт временные пароли,
  * сбрасывает забытые пароли и отключает доступ уволенным.
  */
 export function UsersPage() {
@@ -78,8 +79,7 @@ export function UsersPage() {
         (!role || u.role === role) &&
         (!q ||
           u.fullName.toLowerCase().includes(q) ||
-          u.login.includes(q) ||
-          u.email?.includes(q) ||
+          u.email.includes(q) ||
           (digits.length >= 3 && u.phone?.includes(digits))),
     );
   }, [all, query, role, showArchive]);
@@ -90,7 +90,7 @@ export function UsersPage() {
         <div>
           <h1 className="text-2xl font-semibold">Пользователи</h1>
           <p className="text-sm text-muted-foreground">
-            Входят по логину, почте или телефону. Бригадира привяжите к бригаде в «Справочниках».
+            Входят по почте. Бригадира привяжите к бригаде в «Справочниках».
           </p>
         </div>
         <div className="flex gap-2">
@@ -117,7 +117,7 @@ export function UsersPage() {
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-8"
-            placeholder="ФИО, логин, почта или телефон"
+            placeholder="ФИО, почта или телефон"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Поиск"
@@ -163,26 +163,20 @@ export function UsersPage() {
               cell: (u) => <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>,
             },
             {
-              key: 'login',
-              header: 'Логин',
+              key: 'email',
+              header: 'Почта',
               cell: (u) => (
-                <span className="font-mono text-sm text-muted-foreground">{u.login}</span>
+                <span className="text-sm break-all text-muted-foreground">{u.email}</span>
               ),
             },
             {
-              key: 'contacts',
-              header: 'Контакты',
-              cell: (u) =>
-                u.email || u.phone ? (
-                  <span className="flex flex-col text-sm">
-                    {u.phone && (
-                      <span className="whitespace-nowrap tabular-nums">{formatPhone(u.phone)}</span>
-                    )}
-                    {u.email && <span className="break-all text-muted-foreground">{u.email}</span>}
-                  </span>
-                ) : (
-                  '—'
-                ),
+              key: 'phone',
+              header: 'Телефон',
+              cell: (u) => (
+                <span className="text-sm whitespace-nowrap tabular-nums">
+                  {u.phone ? formatPhone(u.phone) : '—'}
+                </span>
+              ),
             },
             { key: 'brigade', header: 'Бригада', cell: (u) => u.brigade?.name ?? '—' },
             {
@@ -270,7 +264,7 @@ function ResetRequests({
             <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onOpen(u)}>
               <div className="font-medium">{u.fullName}</div>
               <div className="text-sm text-muted-foreground">
-                {u.login} · {ROLE_LABELS[u.role]}
+                {u.email} · {ROLE_LABELS[u.role]}
                 {u.phone && ` · ${formatPhone(u.phone)}`} · {formatDateTime(u.resetRequestedAt)}
               </div>
             </button>
@@ -310,9 +304,8 @@ function EditUserDialog({
   const form = useForm<UserUpdate, unknown, z.output<typeof userUpdateSchema>>({
     resolver: zodResolver(userUpdateSchema),
     defaultValues: {
-      login: user.login,
       fullName: user.fullName,
-      email: user.email ?? '',
+      email: user.email,
       phone: user.phone ? formatPhone(user.phone) : '',
       role: user.role,
     },
@@ -359,16 +352,12 @@ function EditUserDialog({
           <Input id="fullName" {...form.register('fullName')} />
           <FieldError errors={[errors.fullName]} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field data-invalid={!!errors.login}>
-            <FieldLabel htmlFor="login">Логин</FieldLabel>
-            <Input
-              id="login"
-              autoCapitalize="none"
-              autoComplete="off"
-              {...form.register('login')}
-            />
-            <FieldError errors={[errors.login]} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field data-invalid={!!errors.email}>
+            <FieldLabel htmlFor="email">Почта</FieldLabel>
+            <EmailInput id="email" autoComplete="off" {...form.register('email')} />
+            <FieldDescription>По ней сотрудник входит</FieldDescription>
+            <FieldError errors={[errors.email]} />
           </Field>
           <Field>
             <FieldLabel htmlFor="role">Роль</FieldLabel>
@@ -387,40 +376,22 @@ function EditUserDialog({
             />
           </Field>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field data-invalid={!!errors.phone}>
-            <FieldLabel htmlFor="phone">Телефон</FieldLabel>
-            <Controller
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <PhoneInput
-                  id="phone"
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                />
-              )}
-            />
-            <FieldError errors={[errors.phone]} />
-          </Field>
-          <Field data-invalid={!!errors.email}>
-            <FieldLabel htmlFor="email">Почта</FieldLabel>
-            <Input
-              id="email"
-              type="email"
-              inputMode="email"
-              autoCapitalize="none"
-              autoComplete="off"
-              placeholder="ivanov@mail.ru"
-              {...form.register('email')}
-            />
-            <FieldError errors={[errors.email]} />
-          </Field>
-        </div>
-        <FieldDescription>
-          Войти можно по логину, телефону или почте — любому из них.
-        </FieldDescription>
+        <Field data-invalid={!!errors.phone}>
+          <FieldLabel htmlFor="phone">Телефон</FieldLabel>
+          <Controller
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <PhoneInput
+                id="phone"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+              />
+            )}
+          />
+          <FieldError errors={[errors.phone]} />
+        </Field>
         {user.lockedUntil && (
           <div className="rounded-lg border border-red-500/50 bg-red-500/5 p-3">
             <div className="mb-1 flex items-center gap-2 text-sm font-medium">
@@ -456,7 +427,7 @@ function EditUserDialog({
           {user.resetRequestedAt && (
             <p className="mb-3 text-sm text-muted-foreground">
               {isMe
-                ? 'Запрос от вашего логина. Если вы вошли — смените пароль в профиле, запрос закроется сам. Или отклоните его.'
+                ? 'Запрос от вашей почты. Если вы вошли — смените пароль в профиле, запрос закроется сам. Или отклоните его.'
                 : 'Нажал «Забыли пароль?» на экране входа. Позвоните сотруднику и убедитесь, что запрос от него. Не от него или пароль вспомнил — отклоните.'}
             </p>
           )}

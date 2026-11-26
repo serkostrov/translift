@@ -98,6 +98,36 @@ export class StorageService {
     };
   }
 
+  /**
+   * Брошенные черновики фото (загрузили в форму отметки и не сохранили) старше суток
+   * удаляются целиком — ночью, без участия администратора.
+   */
+  async purgeDrafts(): Promise<number> {
+    const where: Prisma.FileWhereInput = {
+      kind: 'PHOTO',
+      stageMarkId: null,
+      claimId: null,
+      createdAt: { lt: new Date(Date.now() - ORPHAN_AGE_MS) },
+    };
+    let done = 0;
+    for (;;) {
+      const batch = await this.prisma.file.findMany({
+        where,
+        take: BATCH,
+        select: { id: true, key: true, thumbKey: true, originalPurgedAt: true },
+      });
+      if (!batch.length) break;
+      await this.s3.deleteMany(
+        batch
+          .flatMap((f) => [f.originalPurgedAt ? null : f.key, f.thumbKey])
+          .filter((k): k is string => !!k),
+      );
+      await this.prisma.file.deleteMany({ where: { id: { in: batch.map((f) => f.id) } } });
+      done += batch.length;
+    }
+    return done;
+  }
+
   private where(input: Cleanup): Prisma.FileWhereInput {
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - input.olderThanMonths);

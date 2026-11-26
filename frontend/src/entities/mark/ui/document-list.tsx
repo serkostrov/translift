@@ -1,5 +1,4 @@
 import type { FileDto } from '@contracts';
-import { Download, ExternalLink, FileImage, FileSpreadsheet, FileText, Trash2 } from 'lucide-react';
 import { formatDateTime } from '@/shared/lib/format';
 import { formatBytes } from '@/shared/lib/image';
 import {
@@ -14,6 +13,14 @@ import {
   AlertDialogTrigger,
 } from '@/shared/ui/alert-dialog';
 import { Button } from '@/shared/ui/button';
+import {
+  Download,
+  ExternalLink,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  Trash2,
+} from '@/shared/ui/icons';
 
 /** Что браузер покажет сам — открываем во вкладке, остальное скачиваем. */
 const OPENABLE = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);

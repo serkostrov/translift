@@ -1,5 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import type { ObjectDetails, ObjectListItem } from '../src/contracts/index.js';
+import type { ObjectDetails, ObjectListItem, Page } from '../src/contracts/index.js';
 import { createTestApp, signIn } from './helpers.js';
 
 describe('Объекты (e2e)', () => {
@@ -59,7 +59,7 @@ describe('Объекты (e2e)', () => {
     expect(updated.body.brigade).toEqual({ id: brigadeId, name: 'Бригада Теста' });
 
     const history = await manager.agent.get(`/api/objects/${id}/history`).expect(200);
-    expect(history.body[0].text).toBe('Бригада: — → Бригада Теста');
+    expect(history.body.items[0].text).toBe('Бригада: — → Бригада Теста');
 
     const mine = await foreman.agent.get('/api/objects').expect(200);
     expect((mine.body as ObjectListItem[]).map((o) => o.id)).toEqual([id]);
@@ -72,6 +72,43 @@ describe('Объекты (e2e)', () => {
     expect(byQ.body).toHaveLength(1);
     const none = await manager.agent.get('/api/objects').query({ brigade: 'none' }).expect(200);
     expect((none.body as ObjectListItem[]).every((o) => o.brigade === null)).toBe(true);
+  });
+
+  it('постранично: сначала новые, порции по limit, nextOffset до конца', async () => {
+    const tag = `Порция-${Date.now()}`;
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const o = await manager.agent
+        .post('/api/objects')
+        .send({
+          address: `г. Тест, ${tag}, ${i}`,
+          shortAddress: `${tag} ${i}`,
+          workType: 'REPLACEMENT',
+        })
+        .expect(201);
+      ids.push(o.body.id);
+    }
+    const first = (
+      await manager.agent.get('/api/objects/page').query({ q: tag, limit: 2 }).expect(200)
+    ).body as Page<ObjectListItem>;
+    expect(first.total).toBe(5);
+    expect(first.items.map((o) => o.id)).toEqual([ids[4], ids[3]]);
+    expect(first.nextOffset).toBe(2);
+    const last = (
+      await manager.agent
+        .get('/api/objects/page')
+        .query({ q: tag, limit: 2, offset: 4 })
+        .expect(200)
+    ).body as Page<ObjectListItem>;
+    expect(last.items.map((o) => o.id)).toEqual([ids[0]]);
+    expect(last.nextOffset).toBeNull();
+    const old = (
+      await manager.agent
+        .get('/api/objects/page')
+        .query({ q: tag, sort: 'old', limit: 1 })
+        .expect(200)
+    ).body as Page<ObjectListItem>;
+    expect(old.items[0].id).toBe(ids[0]);
   });
 
   it('проценты в шаблоне должны расти', async () => {

@@ -27,9 +27,9 @@ describe('Health и авторизация (e2e)', () => {
   it('неверный пароль — 401 с понятным текстом', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ method: 'login', value: 'nobody', password: 'wrong' })
+      .send({ email: 'nobody@test.ru', password: 'wrong' })
       .expect(401);
-    expect(res.body.message).toBe('Неверный логин или пароль');
+    expect(res.body.message).toBe('Неверная почта или пароль');
   });
 
   it('вход, /me и выход', async () => {
@@ -45,13 +45,13 @@ describe('Health и авторизация (e2e)', () => {
     const { agent } = await signIn(app, 'FOREMAN');
     await agent
       .post('/api/users')
-      .send({ login: 'x-user', fullName: 'X', role: 'FOREMAN', password: '12345678' })
+      .send({ email: 'x-user@test.ru', fullName: 'X', role: 'FOREMAN', password: '12345678' })
       .expect(403);
   });
 
   it('валидация тела запроса — 400', async () => {
     const { agent } = await signIn(app, 'ADMIN');
-    const res = await agent.post('/api/users').send({ login: 'a' }).expect(400);
+    const res = await agent.post('/api/users').send({ email: 'a' }).expect(400);
     expect(Array.isArray(res.body.message)).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe('Health и авторизация (e2e)', () => {
     const other = request.agent(app.getHttpServer());
     await other
       .post('/api/auth/login')
-      .send({ method: 'login', value: user.login, password: 'test-password-1' })
+      .send({ email: user.email, password: 'test-password-1' })
       .expect(200);
 
     const prof = await agent
@@ -85,7 +85,7 @@ describe('Health и авторизация (e2e)', () => {
     await other.get('/api/auth/me').expect(401);
     await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ method: 'login', value: user.login, password: 'new-password-1' })
+      .send({ email: user.email, password: 'new-password-1' })
       .expect(200);
   });
 });

@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { BrigadesTab } from './brigades-tab';
 import { ContractsTab } from './contracts-tab';
+import { CustomersTab } from './customers-tab';
 import { TemplatesTab } from './templates-tab';
 
 export function RefsPage() {
@@ -14,11 +15,15 @@ export function RefsPage() {
       <Tabs value={tab} onValueChange={(t) => setParams({ tab: t }, { replace: true })}>
         <TabsList>
           <TabsTrigger value="brigades">Бригады</TabsTrigger>
+          <TabsTrigger value="customers">Заказчики</TabsTrigger>
           <TabsTrigger value="contracts">Договоры</TabsTrigger>
           <TabsTrigger value="stages">Этапы</TabsTrigger>
         </TabsList>
         <TabsContent value="brigades">
           <BrigadesTab />
+        </TabsContent>
+        <TabsContent value="customers">
+          <CustomersTab />
         </TabsContent>
         <TabsContent value="contracts">
           <ContractsTab />

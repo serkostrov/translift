@@ -49,24 +49,34 @@ export class NotificationsService implements OnApplicationBootstrap {
     };
   }
 
-  async list(user: SessionUser, onlyUnread = false): Promise<NotificationsDto> {
+  async list(
+    user: SessionUser,
+    onlyUnread = false,
+    page: { offset: number; limit: number } = { offset: 0, limit: 30 },
+  ): Promise<NotificationsDto> {
     const baseline = await this.baseline(user.id);
     const where = this.whereFor(user);
     const unreadWhere = { AND: [where, this.unreadWhere(user.id, baseline)] };
-    const [rows, unread] = await Promise.all([
+    const listWhere = onlyUnread ? unreadWhere : where;
+    const [rows, unread, total] = await Promise.all([
       this.prisma.notification.findMany({
-        where: onlyUnread ? unreadWhere : where,
+        where: listWhere,
         orderBy: { createdAt: 'desc' },
-        take: 200,
+        skip: page.offset,
+        take: page.limit,
         include: {
           object: { select: { id: true, shortAddress: true } },
           reads: { where: { userId: user.id }, select: { read: true } },
         },
       }),
       this.prisma.notification.count({ where: unreadWhere }),
+      this.prisma.notification.count({ where: listWhere }),
     ]);
+    const next = page.offset + rows.length;
     return {
       unread,
+      total,
+      nextOffset: next < total ? next : null,
       items: rows.map((n) => ({
         id: n.id,
         createdAt: n.createdAt.toISOString(),
@@ -122,7 +132,7 @@ export class NotificationsService implements OnApplicationBootstrap {
   async checkRisks(): Promise<number> {
     const system = {
       id: 'system',
-      login: '',
+      email: '',
       fullName: '',
       role: 'ADMIN' as const,
       brigadeId: null,

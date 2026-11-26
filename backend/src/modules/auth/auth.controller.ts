@@ -34,7 +34,6 @@ import {
 import type { Env } from '../../common/config/env.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
-  type LoginMethod,
   loginSchema,
   type PasswordChange,
   type ProfileDto,
@@ -43,9 +42,6 @@ import {
   profileUpdateSchema,
   type SessionUser,
 } from '../../contracts/index.js';
-
-const byIdentifier = ({ method, value }: { method: LoginMethod; value: string }) =>
-  method === 'login' ? { login: value } : method === 'email' ? { email: value } : { phone: value };
 
 /** Сколько неверных паролей подряд — и на сколько минут блокируется вход. */
 export const LOCK_AFTER = 10;
@@ -56,7 +52,7 @@ const lockedMessage = (until: Date) => {
   return `Слишком много неверных паролей. Вход заблокирован ещё на ${minutes} мин. Если срочно — попросите администратора снять блокировку.`;
 };
 
-/** Хеш для несуществующего логина: проверка идёт столько же, сколько для настоящего. */
+/** Хеш для несуществующей почты: проверка идёт столько же, сколько для настоящего. */
 const DUMMY_HASH = await hashPassword('dummy-password-for-timing');
 
 @ApiTags('auth')
@@ -77,9 +73,8 @@ export class AuthController {
     @Req() req: AuthedRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionUser> {
-    // Логин, почта или телефон — по выбору на экране входа; поле называется так же, как способ
     const user = await this.prisma.user.findUnique({
-      where: byIdentifier(body),
+      where: { email: body.email },
       include: { ledBrigade: { select: { id: true } } },
     });
     // Заблокирован после серии неудачных попыток — пароль даже не проверяем
@@ -89,13 +84,7 @@ export class AuthController {
     const ok = await verifyPassword(body.password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok || !user.isActive) {
       if (user && !ok) await this.registerFailure(user);
-      throw new UnauthorizedException(
-        body.method === 'login'
-          ? 'Неверный логин или пароль'
-          : body.method === 'email'
-            ? 'Неверная почта или пароль'
-            : 'Неверный телефон или пароль',
-      );
+      throw new UnauthorizedException('Неверная почта или пароль');
     }
 
     const token = await this.sessions.create(user.id, req.headers['user-agent']);
@@ -117,7 +106,7 @@ export class AuthController {
    * Неудачный вход. После LOCK_AFTER подряд — блокировка на LOCK_MINUTES и уведомление
    * администраторам: так перебор пароля упирается в стену даже с разных адресов.
    */
-  private async registerFailure(user: { id: string; login: string; fullName: string }) {
+  private async registerFailure(user: { id: string; email: string; fullName: string }) {
     const { failedLogins } = await this.prisma.user.update({
       where: { id: user.id },
       data: { failedLogins: { increment: 1 } },
@@ -140,7 +129,7 @@ export class AuthController {
           level: 'DANGER' as const,
           link: '/users',
           topic: 'Безопасность',
-          text: `${user.fullName} (${user.login}): ${LOCK_AFTER} неверных паролей подряд, вход заблокирован на ${LOCK_MINUTES} минут. Если это не сотрудник — возможен подбор пароля.`,
+          text: `${user.fullName} (${user.email}): ${LOCK_AFTER} неверных паролей подряд, вход заблокирован на ${LOCK_MINUTES} минут. Если это не сотрудник — возможен подбор пароля.`,
           dedupeKey: `lockout:${user.id}`,
         })),
       }),
@@ -150,7 +139,7 @@ export class AuthController {
   /**
    * «Забыли пароль?» Почты и СМС нет (внешние рассылки вне ТЗ), поэтому запрос уходит
    * администраторам: они видят его в уведомлениях и в разделе «Пользователи» и выдают
-   * временный пароль. Ответ одинаковый для любого логина — по нему нельзя узнать,
+   * временный пароль. Ответ одинаковый для любой почты — по нему нельзя узнать,
    * существует ли пользователь.
    */
   @Public()
@@ -161,7 +150,7 @@ export class AuthController {
     @Body({ schema: passwordResetRequestSchema })
     body: z.output<typeof passwordResetRequestSchema>,
   ) {
-    const user = await this.prisma.user.findUnique({ where: byIdentifier(body) });
+    const user = await this.prisma.user.findUnique({ where: { email: body.email } });
     if (!user?.isActive) return;
     // Повторные нажатия в течение часа не плодят уведомления
     const hourAgo = Date.now() - 60 * 60_000;
@@ -182,7 +171,7 @@ export class AuthController {
           level: 'WARNING' as const,
           link: '/users',
           topic: 'Пароль',
-          text: `${user.fullName} (${user.login}) не может войти и просит новый пароль. Выдайте его в разделе «Пользователи».`,
+          text: `${user.fullName} (${user.email}) не может войти и просит новый пароль. Выдайте его в разделе «Пользователи».`,
           dedupeKey: `password-reset:${user.id}`,
         })),
       }),
@@ -210,7 +199,7 @@ export class AuthController {
     return this.loadProfile(user.id);
   }
 
-  /** Свои ФИО и телефон пользователь меняет сам; роль и логин — только администратор. */
+  /** Свои ФИО, почту и телефон пользователь меняет сам; роль — только администратор. */
   @Patch('profile')
   async updateProfile(
     @Body({ schema: profileUpdateSchema }) body: z.output<typeof profileUpdateSchema>,
@@ -271,12 +260,11 @@ export class AuthController {
     });
     return {
       id: u.id,
-      login: u.login,
+      email: u.email,
       fullName: u.fullName,
       role: u.role,
       brigadeId: u.ledBrigade?.id ?? null,
       mustChangePassword: u.mustChangePassword,
-      email: u.email,
       phone: u.phone,
       brigade: u.ledBrigade,
       sessions: u._count.sessions,

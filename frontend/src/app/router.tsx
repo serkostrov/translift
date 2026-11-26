@@ -22,12 +22,15 @@ const ObjectsPage = page(() => import('@/pages/objects'), 'ObjectsPage');
 const ObjectPage = page(() => import('@/pages/object'), 'ObjectPage');
 const ForemanPage = page(() => import('@/pages/foreman'), 'ForemanPage');
 const ClaimsPage = page(() => import('@/pages/claims'), 'ClaimsPage');
+const ClaimPage = page(() => import('@/pages/claim'), 'ClaimPage');
 const ReportsPage = page(() => import('@/pages/reports'), 'ReportsPage');
 const NotificationsPage = page(() => import('@/pages/notifications'), 'NotificationsPage');
 const ProfilePage = page(() => import('@/pages/profile'), 'ProfilePage');
 const RefsPage = page(() => import('@/pages/refs'), 'RefsPage');
 const UsersPage = page(() => import('@/pages/users'), 'UsersPage');
 const StoragePage = page(() => import('@/pages/storage'), 'StoragePage');
+const ContractPage = page(() => import('@/pages/directory'), 'ContractPage');
+const CustomerPage = page(() => import('@/pages/directory'), 'CustomerPage');
 
 function Lazy({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const content = <Suspense fallback={<ElevatorLoader />}>{children}</Suspense>;
@@ -112,6 +115,15 @@ export const router = createBrowserRouter([
             ),
           },
           {
+            // Бригадир открывает рекламации своего объекта; доступ проверяет сервер
+            path: 'claims/:id',
+            element: (
+              <Lazy>
+                <ClaimPage />
+              </Lazy>
+            ),
+          },
+          {
             path: 'reports',
             element: (
               <Lazy roles={OFFICE}>
@@ -124,6 +136,22 @@ export const router = createBrowserRouter([
             element: (
               <Lazy roles={['ADMIN', 'MANAGER']}>
                 <RefsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'contracts/:id',
+            element: (
+              <Lazy roles={OFFICE}>
+                <ContractPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'customers/:id',
+            element: (
+              <Lazy roles={OFFICE}>
+                <CustomerPage />
               </Lazy>
             ),
           },

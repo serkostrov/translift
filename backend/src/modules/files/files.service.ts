@@ -149,7 +149,13 @@ export class FilesService {
   async list(objectId: string, kind: FileKind | undefined, user: SessionUser): Promise<FileDto[]> {
     await this.objects.ensureAccess(objectId, user);
     const rows = await this.prisma.file.findMany({
-      where: { objectId, kind },
+      // Черновики — фото, загруженные в форму отметки, которую ещё не сохранили (или бросили):
+      // они не относятся ни к этапу, ни к рекламации и в галерее объекта не нужны
+      where: {
+        objectId,
+        kind,
+        NOT: { kind: 'PHOTO', stageMarkId: null, claimId: null },
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         uploadedBy: { select: { id: true, fullName: true } },
@@ -173,6 +179,18 @@ export class FilesService {
           : null,
       claim: f.claim,
     }));
+  }
+
+  /**
+   * Удалить свой черновик: фото из формы отметки, которую закрыли без сохранения.
+   * Прикреплённые к этапу или рекламации фото так удалить нельзя.
+   */
+  async removeDraft(id: string, user: SessionUser) {
+    const f = await this.prisma.file.findUnique({ where: { id } });
+    if (!f) return;
+    const draft = f.kind === 'PHOTO' && !f.stageMarkId && !f.claimId && f.uploadedById === user.id;
+    if (!draft) throw new ForbiddenException('Это фото уже прикреплено — удалить его так нельзя');
+    await this.remove(id);
   }
 
   async remove(id: string) {

@@ -1,4 +1,3 @@
-import { Monitor, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import { Button } from '@/shared/ui/button';
@@ -9,6 +8,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
+import { Monitor, Moon, Sun } from '@/shared/ui/icons';
 
 const OPTIONS = [
   { value: 'dark', label: 'Тёмная', icon: Moon },

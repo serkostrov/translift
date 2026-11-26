@@ -6,15 +6,25 @@ import type {
   ClaimUpdate,
   FinanceDto,
   FinanceUpdate,
+  Page,
 } from '@contracts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '@/shared/api/http';
+import { useInfinitePages } from '@/shared/api/infinite';
 
 export const claimKeys = {
   all: ['claims'] as const,
   list: (q: ClaimListQuery) => ['claims', 'list', q] as const,
   detail: (id: string) => ['claims', 'detail', id] as const,
+  page: (q: ClaimListQuery) => ['claims', 'page', q] as const,
 };
+
+/** Рекламации порциями — для раздела «Рекламации». */
+export function useClaimPages(query: ClaimListQuery = {}) {
+  return useInfinitePages<ClaimDto>(claimKeys.page(query), (offset) =>
+    http<Page<ClaimDto>>('/claims/page', { query: { ...query, offset } }),
+  );
+}
 
 export function useClaims(query: ClaimListQuery = {}) {
   return useQuery({

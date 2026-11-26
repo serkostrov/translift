@@ -1,0 +1,3 @@
+-- Рекламация теперь на своей странице: ссылки уведомлений /claims?id=… → /claims/…
+UPDATE "Notification" SET "link" = '/claims/' || substring("link" from '^/claims\?id=(.+)$')
+WHERE "link" LIKE '/claims?id=%';

@@ -11,6 +11,7 @@ import type {
   ObjectListItem,
   ObjectListQuery,
   ObjectUpdate,
+  Page,
   SessionUser,
   StageRef,
 } from '../../contracts/index.js';
@@ -83,6 +84,7 @@ export class ObjectsService {
       archivedAt: query.archived ? { not: null } : null,
       template: query.workType ? { workType: query.workType } : undefined,
       contractId: query.contractId,
+      contract: query.customerId ? { customerId: query.customerId } : undefined,
     };
     if (query.q) {
       where.OR = [
@@ -98,7 +100,11 @@ export class ObjectsService {
       this.prisma.liftObject.findMany({
         where,
         include: objectInclude,
-        orderBy: { deadline: 'asc' },
+        // По умолчанию — сначала новые: только что заведённый объект сразу наверху
+        orderBy:
+          query.sort === 'deadline'
+            ? [{ deadline: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }]
+            : { createdAt: query.sort === 'old' ? 'asc' : 'desc' },
       }),
       this.stagesByTemplate(),
     ]);
@@ -134,11 +140,16 @@ export class ObjectsService {
   }
 
   async create(body: ObjectCreate, user: SessionUser): Promise<ObjectDetails> {
-    const { workType, deadline, ...rest } = body;
+    const { workType, deadline, plannedStartDate, ...rest } = body;
     const template = await this.prisma.stageTemplate.findUniqueOrThrow({ where: { workType } });
     const row = await this.prisma.$transaction(async (tx) => {
       const created = await tx.liftObject.create({
-        data: { ...rest, deadline: fromDateString(deadline), templateId: template.id },
+        data: {
+          ...rest,
+          deadline: fromDateString(deadline),
+          plannedStartDate: fromDateString(plannedStartDate),
+          templateId: template.id,
+        },
       });
       await this.audit.log(
         {
@@ -222,7 +233,11 @@ export class ObjectsService {
     return this.get(id, user);
   }
 
-  async history(id: string, user: SessionUser): Promise<AuditEntry[]> {
+  async history(
+    id: string,
+    user: SessionUser,
+    page: { offset: number; limit: number } = { offset: 0, limit: 200 },
+  ): Promise<Page<AuditEntry>> {
     const obj = await this.prisma.liftObject.findUnique({
       where: { id },
       select: { brigadeId: true },
@@ -230,20 +245,26 @@ export class ObjectsService {
     if (!obj) throw new NotFoundException('Объект не найден');
     this.assertAccess(obj.brigadeId, user);
 
-    const rows = await this.prisma.auditLog.findMany({
-      where: { objectId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-      include: { user: { select: { id: true, fullName: true } } },
-    });
+    const [rows, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where: { objectId: id },
+        orderBy: { createdAt: 'desc' },
+        skip: page.offset,
+        take: page.limit,
+        include: { user: { select: { id: true, fullName: true } } },
+      }),
+      this.prisma.auditLog.count({ where: { objectId: id } }),
+    ]);
     const names = await this.refNames(rows);
-    return rows.map((r) => ({
+    const items = rows.map((r) => ({
       id: r.id,
       createdAt: r.createdAt.toISOString(),
       user: r.user,
       action: r.action,
       text: this.describe(r.action, r.changes as Record<string, [unknown, unknown]> | null, names),
     }));
+    const next = page.offset + rows.length;
+    return { items, total, nextOffset: next < total ? next : null };
   }
 
   // ---------- внутреннее ----------

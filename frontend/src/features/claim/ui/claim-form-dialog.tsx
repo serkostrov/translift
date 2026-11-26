@@ -73,7 +73,7 @@ export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Новая рекламация</DialogTitle>
           <DialogDescription>

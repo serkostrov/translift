@@ -1,5 +1,4 @@
 import type { NotificationDto } from '@contracts';
-import { ArrowRight, Building2, Mail, MailOpen } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
@@ -14,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog';
+import { ArrowRight, Building2, Mail, MailOpen } from '@/shared/ui/icons';
 import { linkLabel, useSetNotificationRead } from '../api/notifications';
 
 const DOT: Record<NotificationDto['level'], string> = {
@@ -184,7 +184,7 @@ function NotificationDialog({
   return (
     <Dialog open={!!n} onOpenChange={(v) => !v && onClose()}>
       {n && (
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Badge className={LEVEL[n.level].className}>{LEVEL[n.level].label}</Badge>

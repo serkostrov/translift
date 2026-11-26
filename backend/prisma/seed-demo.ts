@@ -20,15 +20,24 @@ const day = (offset: number) => {
 };
 
 const OFFICE_USERS = [
-  { login: 'director', fullName: 'Дмитрий (зам. директора по монтажу)', role: 'MANAGER' as const },
-  { login: 'finance', fullName: 'Ольга (финансы)', role: 'FINANCE' as const },
+  {
+    email: 'director@user.ru',
+    fullName: 'Дмитрий (зам. директора по монтажу)',
+    role: 'MANAGER' as const,
+  },
+  { email: 'finance@user.ru', fullName: 'Ольга (финансы)', role: 'FINANCE' as const },
 ];
 
 const BRIGADES = [
-  { name: 'Бригада Смирнова', login: 'brigadir1', fullName: 'Алексей Смирнов', headcount: 3 },
-  { name: 'Бригада Козлова', login: 'brigadir2', fullName: 'Игорь Козлов', headcount: 3 },
-  { name: 'Бригада Волкова', login: 'brigadir3', fullName: 'Павел Волков', headcount: 2 },
-  { name: 'Бригада Зайцева', login: 'brigadir4', fullName: 'Николай Зайцев', headcount: 3 },
+  {
+    name: 'Бригада Смирнова',
+    email: 'brigadir1@user.ru',
+    fullName: 'Алексей Смирнов',
+    headcount: 3,
+  },
+  { name: 'Бригада Козлова', email: 'brigadir2@user.ru', fullName: 'Игорь Козлов', headcount: 3 },
+  { name: 'Бригада Волкова', email: 'brigadir3@user.ru', fullName: 'Павел Волков', headcount: 2 },
+  { name: 'Бригада Зайцева', email: 'brigadir4@user.ru', fullName: 'Николай Зайцев', headcount: 3 },
 ];
 
 // [полный адрес, короткий, этажность, г/п, срок (дн. от сегодня), открыт (дн.), бригада (индекс), этап]
@@ -102,7 +111,7 @@ async function main() {
   // Офисные роли для показа: руководитель и сотрудник с доступом к финансам
   for (const u of OFFICE_USERS) {
     await prisma.user.upsert({
-      where: { login: u.login },
+      where: { email: u.email },
       update: reset,
       create: { ...u, passwordHash },
     });
@@ -111,9 +120,9 @@ async function main() {
   // Бригадиры — до проверки объектов, чтобы повторный запуск сбрасывал им пароль
   for (const b of BRIGADES) {
     await prisma.user.upsert({
-      where: { login: b.login },
+      where: { email: b.email },
       update: reset,
-      create: { login: b.login, fullName: b.fullName, role: 'FOREMAN', passwordHash },
+      create: { email: b.email, fullName: b.fullName, role: 'FOREMAN', passwordHash },
     });
   }
 
@@ -125,9 +134,9 @@ async function main() {
   const brigades = [];
   for (const b of BRIGADES) {
     const foreman = await prisma.user.upsert({
-      where: { login: b.login },
+      where: { email: b.email },
       update: reset,
-      create: { login: b.login, fullName: b.fullName, role: 'FOREMAN', passwordHash },
+      create: { email: b.email, fullName: b.fullName, role: 'FOREMAN', passwordHash },
     });
     brigades.push(
       await prisma.brigade.upsert({

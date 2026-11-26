@@ -1,7 +1,9 @@
 export {
   useBrigades,
+  useContract,
   useContracts,
   useCreateUser,
+  useCustomer,
   useCustomers,
   useDeleteBrigade,
   useDeleteUser,

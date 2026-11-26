@@ -36,6 +36,12 @@ const REPLACEMENT_STAGES: StageSeed[] = [
   ['Подписание актов, КС-2, КС-3', 'Акты, КС-2, КС-3', 100, 'KS'],
 ];
 
+/**
+ * Стартовые оценки длительности этапов в днях (по порядку), итого 64 дня.
+ * TODO(заказчик): уточнить; администратор правит их в «Справочники → Этапы».
+ */
+const PLANNED_DAYS = [2, 5, 5, 4, 2, 3, 5, 3, 2, 4, 7, 10, 5, 7];
+
 const TEMPLATES: { workType: WorkType; name: string; stages: StageSeed[] }[] = [
   {
     workType: 'REPLACEMENT',
@@ -53,28 +59,37 @@ async function seedTemplates() {
       create: { workType: t.workType, name: t.name },
     });
     for (const [i, [fullName, shortName, percent, setsDate]] of t.stages.entries()) {
+      const plannedDays = PLANNED_DAYS[i] ?? 0;
       await prisma.templateStage.upsert({
         where: { templateId_order: { templateId: template.id, order: i + 1 } },
         update: {},
-        create: { templateId: template.id, order: i + 1, fullName, shortName, percent, setsDate },
+        create: {
+          templateId: template.id,
+          order: i + 1,
+          fullName,
+          shortName,
+          percent,
+          setsDate,
+          plannedDays,
+        },
       });
     }
   }
 }
 
 async function seedAdmin() {
-  const login = process.env.SEED_ADMIN_LOGIN;
+  const email = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD;
-  if (!login || !password) return;
+  if (!email || !password) return;
   const passwordHash = await hashPassword(password);
   // SEED_ADMIN_RESET=true — аварийное восстановление, если администратор забыл пароль:
   // пароль из SEED_ADMIN_PASSWORD становится временным, доступ и роль возвращаются
   const reset = process.env.SEED_ADMIN_RESET === 'true';
   await prisma.user.upsert({
-    where: { login },
+    where: { email },
     update: reset ? { passwordHash, mustChangePassword: true, isActive: true, role: 'ADMIN' } : {},
     create: {
-      login,
+      email,
       passwordHash,
       fullName: 'Администратор',
       role: 'ADMIN',

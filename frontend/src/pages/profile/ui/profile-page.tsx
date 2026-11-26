@@ -9,16 +9,6 @@ import {
 } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Bell,
-  ChevronRight,
-  FileSpreadsheet,
-  HardDrive,
-  LogOut,
-  type LucideIcon,
-  MonitorSmartphone,
-  Users,
-} from 'lucide-react';
 import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
@@ -41,7 +31,18 @@ import {
 } from '@/shared/ui/alert-dialog';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { EmailInput } from '@/shared/ui/email-input';
 import { Field, FieldError, FieldLabel } from '@/shared/ui/field';
+import {
+  Bell,
+  ChevronRight,
+  FileSpreadsheet,
+  HardDrive,
+  type IconComponent,
+  LogOut,
+  MonitorSmartphone,
+  Users,
+} from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 import { PhoneInput } from '@/shared/ui/phone-input';
 import { BlockSkeleton } from '@/shared/ui/skeletons';
@@ -63,7 +64,7 @@ export function ProfilePage() {
       <div>
         <h1 className="text-2xl font-semibold">Профиль</h1>
         <p className="text-sm text-muted-foreground">
-          {p.login} · {ROLE_LABELS[p.role]}
+          {p.email} · {ROLE_LABELS[p.role]}
           {p.brigade && ` · ${p.brigade.name}`}
         </p>
       </div>
@@ -81,7 +82,7 @@ export function ProfilePage() {
 /** На телефоне: разделы, которых нет в нижнем меню. */
 function MoreSections() {
   const user = useCurrentUser();
-  const items: { to: string; label: string; icon: LucideIcon; show: boolean }[] = [
+  const items: { to: string; label: string; icon: IconComponent; show: boolean }[] = [
     { to: '/notifications', label: 'Уведомления', icon: Bell, show: true },
     { to: '/reports', label: 'Отчёты', icon: FileSpreadsheet, show: !hasRole(user, 'FOREMAN') },
     { to: '/users', label: 'Пользователи', icon: Users, show: hasRole(user, 'ADMIN') },
@@ -115,7 +116,7 @@ function ProfileForm({ profile }: { profile: ProfileDto }) {
   useEffect(() => {
     form.reset({
       fullName: profile.fullName,
-      email: profile.email ?? '',
+      email: profile.email,
       phone: profile.phone ? formatPhone(profile.phone) : '',
     });
   }, [profile, form]);
@@ -136,7 +137,7 @@ function ProfileForm({ profile }: { profile: ProfileDto }) {
       <CardHeader>
         <CardTitle>Личные данные</CardTitle>
         <CardDescription>
-          Входить можно по логину, телефону или почте. Логин и роль меняет администратор.
+          Входите по почте — если поменяете её, входите с новой. Роль меняет администратор.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -164,15 +165,7 @@ function ProfileForm({ profile }: { profile: ProfileDto }) {
           </Field>
           <Field data-invalid={!!errors.email}>
             <FieldLabel htmlFor="p-email">Почта</FieldLabel>
-            <Input
-              id="p-email"
-              type="email"
-              inputMode="email"
-              autoCapitalize="none"
-              autoComplete="email"
-              placeholder="ivanov@mail.ru"
-              {...form.register('email')}
-            />
+            <EmailInput id="p-email" autoComplete="email" {...form.register('email')} />
             <FieldError errors={[errors.email]} />
           </Field>
           <Button type="submit" disabled={!isDirty || save.isPending}>
@@ -280,7 +273,7 @@ function SessionCard({ profile }: { profile: ProfileDto }) {
             <AlertDialogHeader>
               <AlertDialogTitle>Выйти из системы?</AlertDialogTitle>
               <AlertDialogDescription>
-                Чтобы снова работать, понадобится ввести логин и пароль.
+                Чтобы снова работать, понадобится ввести почту и пароль.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

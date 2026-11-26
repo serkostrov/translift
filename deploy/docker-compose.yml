@@ -62,7 +62,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_FORCE_PATH_STYLE: "true"
       # Нужны только для первого запуска seed (создание администратора)
-      SEED_ADMIN_LOGIN: ${SEED_ADMIN_LOGIN:-admin}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@user.ru}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       SEED_ADMIN_RESET: ${SEED_ADMIN_RESET:-false}
     healthcheck:

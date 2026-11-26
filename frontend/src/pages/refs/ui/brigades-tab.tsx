@@ -1,11 +1,11 @@
 import type { BrigadeDto } from '@contracts';
-import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { BrigadeDialog, useBrigades } from '@/entities/refs';
 import { hasRole, useCurrentUser } from '@/entities/session';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { DataList } from '@/shared/ui/data-list';
+import { Plus } from '@/shared/ui/icons';
 
 export function BrigadesTab() {
   const brigades = useBrigades();

@@ -9,8 +9,9 @@ import { Checkbox } from '@/shared/ui/checkbox';
 import { Input } from '@/shared/ui/input';
 import { StagesSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { Textarea } from '@/shared/ui/textarea';
 
-/** Шаблоны этапов: правка коротких названий, процентов и флага фото — без программиста. */
+/** Шаблоны этапов: названия, плановые дни, проценты и флаг фото — правит администратор. */
 export function TemplatesTab() {
   const templates = useTemplates();
   const user = useCurrentUser();
@@ -32,14 +33,18 @@ export function TemplatesTab() {
         <TabsContent key={t.id} value={t.id} className="space-y-2">
           <p className="text-sm text-muted-foreground">
             {canEdit
-              ? 'Изменения сохраняются сразу и пересчитывают проценты всех объектов этого типа.'
-              : 'Править этапы может администратор.'}
+              ? 'Изменения сохраняются сразу и действуют на все объекты этого типа. «Дней» — сколько этап длится по плану: из них и плановой даты начала работ объекта считаются плановые даты этапов.'
+              : 'Править этапы может администратор.'}{' '}
+            Итого по плану: {t.stages.reduce((sum, s) => sum + s.plannedDays, 0)} дн.
           </p>
           <Card className="gap-0 py-0">
-            <div className="hidden gap-3 border-b px-4 py-2 text-sm font-medium text-muted-foreground md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_14rem_6rem_4rem]">
+            <div
+              className={`hidden gap-3 border-b px-4 py-2 text-sm font-medium text-muted-foreground md:grid ${GRID}`}
+            >
               <span>№</span>
-              <span>Как в отчёте генподрядчику</span>
-              <span>Короткое название</span>
+              <span>Полное название — в отчёте генподрядчику</span>
+              <span>Короткое — в интерфейсе</span>
+              <span>Дней</span>
               <span>%</span>
               <span>Фото</span>
             </div>
@@ -55,9 +60,13 @@ export function TemplatesTab() {
   );
 }
 
+const GRID = 'md:grid-cols-[2rem_minmax(0,1fr)_minmax(0,12rem)_4.5rem_4.5rem_3rem]';
+
 function StageRow({ stage, canEdit }: { stage: TemplateStageDto; canEdit: boolean }) {
   const save = useSaveTemplateStage();
+  const [fullName, setFullName] = useState(stage.fullName);
   const [shortName, setShortName] = useState(stage.shortName);
+  const [days, setDays] = useState(String(stage.plannedDays));
   const [percent, setPercent] = useState(String(stage.percent));
 
   const commit = (body: Parameters<typeof save.mutate>[0]['body'], reset: () => void) =>
@@ -72,11 +81,59 @@ function StageRow({ stage, canEdit }: { stage: TemplateStageDto; canEdit: boolea
       },
     );
 
-  // Десктоп — строка-сетка; телефон — карточка: номер и полное название сверху, поля ниже
+  const num = (
+    label: string,
+    value: string,
+    set: (v: string) => void,
+    current: number,
+    key: 'percent' | 'plannedDays',
+    suffix: string,
+  ) => (
+    <div className="flex items-center gap-2 md:block">
+      <span className="w-20 text-xs text-muted-foreground md:hidden">{label}</span>
+      {canEdit ? (
+        <Input
+          className="w-20 md:w-full"
+          type="number"
+          inputMode="numeric"
+          value={value}
+          aria-label={`${label}, этап ${stage.order}`}
+          onChange={(e) => set(e.target.value)}
+          onBlur={() =>
+            Number(value) !== current &&
+            commit({ [key]: Number(value) }, () => set(String(current)))
+          }
+        />
+      ) : (
+        <span className="text-sm tabular-nums">
+          {current}
+          {suffix}
+        </span>
+      )}
+    </div>
+  );
+
+  // Десктоп — строка-сетка; телефон — карточка: номер и названия сверху, числа ниже
   return (
-    <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-3 md:grid-cols-[2.5rem_minmax(0,1fr)_14rem_6rem_4rem]">
+    <div
+      className={`grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-3 ${GRID}`}
+    >
       <span className="text-sm tabular-nums text-muted-foreground">{stage.order}</span>
-      <span className="text-sm">{stage.fullName}</span>
+      {canEdit ? (
+        <Textarea
+          rows={1}
+          className="field-sizing-content min-h-8 resize-none py-1.5"
+          value={fullName}
+          aria-label={`Полное название этапа ${stage.order}`}
+          onChange={(e) => setFullName(e.target.value)}
+          onBlur={() =>
+            fullName.trim() !== stage.fullName &&
+            commit({ fullName }, () => setFullName(stage.fullName))
+          }
+        />
+      ) : (
+        <span className="text-sm">{stage.fullName}</span>
+      )}
       <div className="col-start-2 md:col-start-auto">
         {canEdit ? (
           <Input
@@ -92,26 +149,9 @@ function StageRow({ stage, canEdit }: { stage: TemplateStageDto; canEdit: boolea
           <span className="text-sm">{stage.shortName}</span>
         )}
       </div>
-      <div className="col-start-2 flex items-center gap-4 md:contents">
-        <div className="flex items-center gap-2 md:block">
-          <span className="text-xs text-muted-foreground md:hidden">%</span>
-          {canEdit ? (
-            <Input
-              className="w-20 md:w-full"
-              type="number"
-              inputMode="numeric"
-              value={percent}
-              aria-label={`Процент этапа ${stage.order}`}
-              onChange={(e) => setPercent(e.target.value)}
-              onBlur={() =>
-                Number(percent) !== stage.percent &&
-                commit({ percent: Number(percent) }, () => setPercent(String(stage.percent)))
-              }
-            />
-          ) : (
-            <span className="text-sm tabular-nums">{stage.percent}%</span>
-          )}
-        </div>
+      <div className="col-start-2 flex flex-wrap items-center gap-x-4 gap-y-2 md:contents">
+        {num('Дней', days, setDays, stage.plannedDays, 'plannedDays', ' дн.')}
+        {num('%', percent, setPercent, stage.percent, 'percent', '%')}
         <div className="flex items-center gap-2">
           <Checkbox
             id={`photo-${stage.id}`}

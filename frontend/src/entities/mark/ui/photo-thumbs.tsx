@@ -1,10 +1,10 @@
 import type { FileDto } from '@contracts';
-import { ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { formatDateTime } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/shared/ui/dialog';
+import { ChevronLeft, ChevronRight, Download, ExternalLink } from '@/shared/ui/icons';
 
 type ViewerProps = {
   photos: FileDto[];
@@ -34,7 +34,7 @@ export function PhotoViewer({ photos, index, onIndexChange, caption }: ViewerPro
 
   return (
     <Dialog open={photo !== null} onOpenChange={(v) => !v && onIndexChange(null)}>
-      <DialogContent className="max-w-[min(96vw,1100px)] gap-2 p-2 sm:p-3">
+      <DialogContent size="viewer" className="gap-2">
         {photo && (
           <>
             <DialogTitle className="sr-only">Фото</DialogTitle>

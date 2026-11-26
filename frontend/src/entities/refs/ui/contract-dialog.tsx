@@ -17,10 +17,13 @@ type FormInput = z.input<typeof contractUpsertSchema>;
 /** Договор с заказчиком: создание и правка. Заказчика можно завести прямо отсюда. */
 export function ContractDialog({
   contract,
+  defaultCustomerId,
   onClose,
   onSaved,
 }: {
   contract: ContractDto | null;
+  /** Новый договор со страницы заказчика — заказчик уже выбран */
+  defaultCustomerId?: string;
   onClose: () => void;
   onSaved?: (contract: ContractDto) => void;
 }) {
@@ -31,7 +34,7 @@ export function ContractDialog({
     resolver: zodResolver(contractUpsertSchema),
     defaultValues: {
       // Заказчика не подставляем: выбирают явно, чтобы не привязать договор не к тому
-      customerId: contract?.customer.id ?? '',
+      customerId: contract?.customer.id ?? defaultCustomerId ?? '',
       number: contract?.number ?? '',
       date: contract?.date ?? null,
       responsible: contract?.responsible ?? '',

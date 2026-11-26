@@ -1,14 +1,16 @@
 import {
+  OBJECT_SORT_LABELS,
+  OBJECT_SORTS,
   OBJECT_STATE_LABELS,
   OBJECT_STATES,
   type ObjectListItem,
   type ObjectListQuery,
+  type ObjectSort,
   WORK_TYPE_LABELS,
 } from '@contracts';
-import { Archive, Plus, Search } from 'lucide-react';
 import { useDeferredValue } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { FlagBadge, ObjectStateBadge, StageSegments, useObjects } from '@/entities/object';
+import { FlagBadge, ObjectStateBadge, StageSegments, useObjectPages } from '@/entities/object';
 import { useBrigades, useContracts } from '@/entities/refs';
 import { isManager, useCurrentUser } from '@/entities/session';
 import { ObjectFormDialog } from '@/features/object-form';
@@ -17,6 +19,8 @@ import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
+import { Archive, Plus, Search } from '@/shared/ui/icons';
+import { InfiniteFooter } from '@/shared/ui/infinite-footer';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { ListSkeleton } from '@/shared/ui/skeletons';
@@ -43,11 +47,12 @@ export function ObjectsPage() {
     brigade: (params.get('brigade') as ObjectListQuery['brigade']) ?? undefined,
     state: (params.get('state') as ObjectListQuery['state']) ?? undefined,
     contractId: params.get('contract') ?? undefined,
+    sort: (params.get('sort') as ObjectSort | null) ?? undefined,
     archived: showArchive || undefined,
   };
-  const objects = useObjects(query);
+  const objects = useObjectPages(query);
   // Сколько в архиве — для кнопки; без фильтров, чтобы число не прыгало
-  const archivedCount = useObjects({ archived: true }).data?.length ?? 0;
+  const archivedCount = useObjectPages({ archived: true }).paging.total;
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -59,7 +64,8 @@ export function ObjectsPage() {
       { replace: true },
     );
 
-  const rows = objects.data ?? [];
+  const rows = objects.items;
+  const placeholder = objects.query.isPlaceholderData;
 
   return (
     <div className="space-y-4">
@@ -139,11 +145,18 @@ export function ObjectsPage() {
             label: `${c.number} · ${c.customer.name}`,
           }))}
         />
+        <SimpleSelect
+          aria-label="Порядок"
+          className="w-full sm:w-48"
+          value={params.get('sort') ?? 'new'}
+          onChange={(v) => setParam('sort', v === 'new' ? null : v)}
+          options={OBJECT_SORTS.map((s) => ({ value: s, label: OBJECT_SORT_LABELS[s] }))}
+        />
       </div>
 
-      {objects.isPending ? (
+      {objects.query.isPending ? (
         <ListSkeleton rows={8} />
-      ) : objects.isError ? (
+      ) : objects.query.isError ? (
         <p className="text-destructive">Не удалось загрузить объекты</p>
       ) : rows.length === 0 ? (
         <Card className="items-center p-10 text-center">
@@ -155,19 +168,14 @@ export function ObjectsPage() {
       ) : (
         <>
           {/* Телефон: карточки */}
-          <div
-            className={cn(
-              'grid gap-2 sm:grid-cols-2 lg:hidden',
-              objects.isPlaceholderData && 'opacity-60',
-            )}
-          >
+          <div className={cn('grid gap-2 sm:grid-cols-2 lg:hidden', placeholder && 'opacity-60')}>
             {rows.map((o) => (
               <ObjectCard key={o.id} object={o} />
             ))}
           </div>
 
           {/* Десктоп: таблица */}
-          <Card className={cn('hidden py-0 lg:block', objects.isPlaceholderData && 'opacity-60')}>
+          <Card className={cn('hidden py-0 lg:block', placeholder && 'opacity-60')}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -234,9 +242,7 @@ export function ObjectsPage() {
         </>
       )}
 
-      {objects.data && (
-        <p className="text-xs text-muted-foreground">Объектов: {objects.data.length}</p>
-      )}
+      {rows.length > 0 && <InfiniteFooter {...objects.paging} />}
     </div>
   );
 }

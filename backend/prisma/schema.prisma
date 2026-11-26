@@ -23,11 +23,10 @@ enum Role {
 
 model User {
   id                       String    @id @default(uuid(7)) @db.Uuid
-  login                    String    @unique
   passwordHash             String
   fullName                 String
-  /// Вход возможен по логину, почте или телефону — все три уникальны
-  email                    String?   @unique
+  /// Почта — она же логин для входа; обязательна и уникальна
+  email                    String    @unique
   /// E.164: +79001234567
   phone                    String?   @unique
   role                     Role
@@ -131,6 +130,8 @@ model TemplateStage {
   /// Контрольный процент готовности после этапа
   percent       Int
   photoRequired Boolean       @default(true)
+  /// Сколько дней этап занимает по плану — из них считаются плановые даты этапов объекта
+  plannedDays   Int           @default(0)
   /// Контрольная дата, которая проставляется при отметке этапа
   setsDate      ControlDate?
 

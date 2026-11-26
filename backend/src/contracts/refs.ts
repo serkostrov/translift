@@ -80,6 +80,8 @@ export type TemplateStageDto = {
   percent: number;
   photoRequired: boolean;
   setsDate: ControlDate | null;
+  /** Дней на этап по плану: из них и плановой даты начала считаются даты этапов */
+  plannedDays: number;
 };
 
 export type StageTemplateDto = {
@@ -95,6 +97,7 @@ export const templateStageUpdateSchema = z
     shortName: requiredText(100),
     percent: z.coerce.number().int().min(0).max(100),
     photoRequired: z.boolean(),
+    plannedDays: z.coerce.number().int().min(0, 'Не меньше 0').max(365, 'Не больше 365'),
   })
   .partial();
 export type TemplateStageUpdate = z.infer<typeof templateStageUpdateSchema>;

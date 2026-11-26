@@ -69,13 +69,13 @@ export class SessionService {
   }
 }
 
-type UserForSession = Pick<User, 'id' | 'login' | 'fullName' | 'role' | 'mustChangePassword'> & {
+type UserForSession = Pick<User, 'id' | 'email' | 'fullName' | 'role' | 'mustChangePassword'> & {
   ledBrigade: { id: string } | null;
 };
 
 export const toSessionUser = (user: UserForSession): SessionUser => ({
   id: user.id,
-  login: user.login,
+  email: user.email,
   fullName: user.fullName,
   role: user.role,
   brigadeId: user.ledBrigade?.id ?? null,

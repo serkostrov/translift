@@ -4,16 +4,16 @@ import {
   CLAIM_STATUSES,
   type ClaimListQuery,
 } from '@contracts';
-import { MessageSquare, Paperclip, Plus, Search } from 'lucide-react';
 import { useDeferredValue } from 'react';
-import { useSearchParams } from 'react-router';
-import { ClaimStatusBadge, useClaims } from '@/entities/claim';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
+import { ClaimStatusBadge, useClaimPages } from '@/entities/claim';
 import { isManager, useCurrentUser } from '@/entities/session';
-import { ClaimFormDialog, ClaimSheet } from '@/features/claim';
+import { ClaimFormDialog } from '@/features/claim';
 import { formatDate } from '@/shared/lib/format';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { DataList } from '@/shared/ui/data-list';
+import { MessageSquare, Paperclip, Plus, Search } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { ListSkeleton } from '@/shared/ui/skeletons';
@@ -27,8 +27,10 @@ export function ClaimsPage() {
     q: deferredQ || undefined,
     status: (params.get('status') as ClaimListQuery['status']) ?? undefined,
   };
-  const claims = useClaims(query);
-  const openId = params.get('id');
+  const claims = useClaimPages(query);
+  const navigate = useNavigate();
+  // Старые ссылки вида /claims?id=… ведут на страницу рекламации
+  const legacyId = params.get('id');
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -40,13 +42,15 @@ export function ClaimsPage() {
       { replace: true },
     );
 
+  if (legacyId) return <Navigate to={`/claims/${legacyId}`} replace />;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-2xl font-semibold">Рекламации</h1>
         {isManager(user) && (
           <ClaimFormDialog
-            onCreated={(id) => setParam('id', id)}
+            onCreated={(id) => navigate(`/claims/${id}`)}
             trigger={
               <Button>
                 <Plus />
@@ -78,15 +82,16 @@ export function ClaimsPage() {
         />
       </div>
 
-      {claims.isPending ? (
+      {claims.query.isPending ? (
         <ListSkeleton rows={6} />
-      ) : !claims.data?.length ? (
+      ) : !claims.items.length ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">Рекламаций нет</Card>
       ) : (
         <DataList
-          rows={claims.data}
+          rows={claims.items}
+          paging={claims.paging}
           rowKey={(c) => c.id}
-          onRowClick={(c) => setParam('id', c.id)}
+          onRowClick={(c) => navigate(`/claims/${c.id}`)}
           columns={[
             {
               key: 'object',
@@ -140,8 +145,6 @@ export function ClaimsPage() {
           ]}
         />
       )}
-
-      <ClaimSheet id={openId} onClose={() => setParam('id', null)} />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import type { CleanupInput, CleanupPreviewDto, StorageStatsDto } from '@contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
@@ -24,6 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { Checkbox } from '@/shared/ui/checkbox';
 import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { Trash2 } from '@/shared/ui/icons';
 import { Progress } from '@/shared/ui/progress';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { DashboardSkeleton } from '@/shared/ui/skeletons';

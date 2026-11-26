@@ -114,7 +114,7 @@ describe('Сводка, уведомления, рекламации, финан
     expect(details).toMatchObject({ status: 'IN_REVIEW', commentsCount: 1, filesCount: 1 });
 
     const history = await manager.agent.get(`/api/objects/${objectId}/history`).expect(200);
-    expect(history.body[0].text).toMatch(/новая → на рассмотрении/);
+    expect(history.body.items[0].text).toMatch(/новая → на рассмотрении/);
   });
 
   it('финансы: правит финансист, руководитель видит, бригадир — нет; остаток считается', async () => {

@@ -1,17 +1,17 @@
-import type { ContractDto } from '@contracts';
-import { Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ContractDialog, useContracts } from '@/entities/refs';
 import { formatDate } from '@/shared/lib/format';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { DataList } from '@/shared/ui/data-list';
+import { Plus, Search } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 
 export function ContractsTab() {
   const contracts = useContracts();
-  const [editing, setEditing] = useState<ContractDto | 'new' | null>(null);
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
 
   // Ищем по номеру, дате (как в списке — дд.мм.гггг), заказчику, ИНН и ответственному
@@ -32,7 +32,7 @@ export function ContractsTab() {
         <p className="text-sm text-muted-foreground">
           Договоры с заказчиками и генподрядчиками. Ответственный и ссылка на фото попадают в отчёт.
         </p>
-        <Button onClick={() => setEditing('new')}>
+        <Button onClick={() => setCreating(true)}>
           <Plus />
           Договор
         </Button>
@@ -55,7 +55,7 @@ export function ContractsTab() {
           </p>
         }
         rowKey={(c) => c.id}
-        onRowClick={setEditing}
+        onRowClick={(c) => navigate(`/contracts/${c.id}`)}
         columns={[
           {
             key: 'number',
@@ -69,7 +69,19 @@ export function ContractsTab() {
               </span>
             ),
           },
-          { key: 'customer', header: 'Заказчик', cell: (c) => c.customer.name },
+          {
+            key: 'customer',
+            header: 'Заказчик',
+            cell: (c) => (
+              <Link
+                to={`/customers/${c.customer.id}`}
+                className="hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {c.customer.name}
+              </Link>
+            ),
+          },
           {
             key: 'responsible',
             header: 'Ответственный в отчёте',
@@ -95,10 +107,11 @@ export function ContractsTab() {
           },
         ]}
       />
-      {editing && (
+      {creating && (
         <ContractDialog
-          contract={editing === 'new' ? null : editing}
-          onClose={() => setEditing(null)}
+          contract={null}
+          onClose={() => setCreating(false)}
+          onSaved={(c) => navigate(`/contracts/${c.id}`)}
         />
       )}
     </div>

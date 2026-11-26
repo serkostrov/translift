@@ -1,5 +1,7 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { PrismaService } from '../src/common/prisma/prisma.service.js';
 import type { FileDto, MarkDto, ObjectDetails, StageTemplateDto } from '../src/contracts/index.js';
+import { MaintenanceService } from '../src/modules/storage/maintenance.service.js';
 import { createTestApp, signIn } from './helpers.js';
 
 /** Минимальный валидный JPEG (1×1). */
@@ -69,6 +71,32 @@ describe('Отметки этапов и фото (e2e)', () => {
     await upload(stranger).expect(403);
   });
 
+  it('фото из несохранённой отметки — черновик: не в галерее, удаляет только автор', async () => {
+    const draft = (await upload(foreman).expect(201)).body as FileDto;
+    const photos = (await manager.agent.get(`/api/objects/${objectId}/files`).expect(200))
+      .body as FileDto[];
+    expect(photos.some((f) => f.id === draft.id)).toBe(false);
+
+    await manager.agent.delete(`/api/files/${draft.id}/draft`).expect(403);
+    await foreman.agent.delete(`/api/files/${draft.id}/draft`).expect(204);
+    await foreman.agent.get(draft.url).expect(404);
+  });
+
+  it('брошенные черновики старше суток ночью удаляются сами', async () => {
+    const prisma = app.get(PrismaService);
+    const old = (await upload(foreman).expect(201)).body as FileDto;
+    const fresh = (await upload(foreman).expect(201)).body as FileDto;
+    await prisma.file.update({
+      where: { id: old.id },
+      data: { createdAt: new Date(Date.now() - 2 * 86_400_000) },
+    });
+    const r = await app.get(MaintenanceService).run();
+    expect(r.drafts).toBeGreaterThanOrEqual(1);
+    expect(await prisma.file.findUnique({ where: { id: old.id } })).toBeNull();
+    expect(await prisma.file.findUnique({ where: { id: fresh.id } })).not.toBeNull();
+    await foreman.agent.delete(`/api/files/${fresh.id}/draft`).expect(204);
+  });
+
   it('без фото этап с обязательным фото не отмечается', async () => {
     const res = await foreman.agent
       .post(`/api/objects/${objectId}/marks`)
@@ -95,7 +123,7 @@ describe('Отметки этапов и фото (e2e)', () => {
     expect(marks[0].photos.map((p) => p.id)).toEqual([photo.id]);
 
     const history = await manager.agent.get(`/api/objects/${objectId}/history`).expect(200);
-    expect(history.body[0].text).toBe('Отметил этап «Открытие объекта» — 5%, фото: 1');
+    expect(history.body.items[0].text).toBe('Отметил этап «Открытие объекта» — 5%, фото: 1');
 
     // Фото, уже привязанное к отметке, повторно использовать нельзя
     await foreman.agent

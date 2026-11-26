@@ -1,10 +1,10 @@
 import { ConflictException } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
-type Contacts = { login?: string; email?: string | null; phone?: string | null };
+type Contacts = { email?: string | null; phone?: string | null };
 
 /**
- * Логин, почта и телефон уникальны — по любому из них можно войти.
+ * Почта (по ней входят) и телефон уникальны.
  * Проверяем заранее, чтобы ответить, что именно занято, а не «Такая запись уже существует».
  */
 export async function assertContactsFree(
@@ -13,7 +13,6 @@ export async function assertContactsFree(
   exceptUserId?: string,
 ) {
   const checks = [
-    ['login', contacts.login, 'Логин уже занят'],
     ['email', contacts.email, 'Эта почта уже указана у другого сотрудника'],
     ['phone', contacts.phone, 'Этот телефон уже указан у другого сотрудника'],
   ] as const;

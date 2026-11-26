@@ -23,7 +23,7 @@ export class NotificationsController {
     @Query({ schema: notificationListQuerySchema })
     query: z.output<typeof notificationListQuerySchema>,
   ): Promise<NotificationsDto> {
-    return this.notifications.list(user, query.unread);
+    return this.notifications.list(user, query.unread, query);
   }
 
   /** Прочитано / не прочитано — у каждого пользователя своё. */

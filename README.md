@@ -25,7 +25,7 @@
 pnpm app:up
 ```
 
-Без pnpm: `docker compose --profile app up -d --build`. Приложение: http://localhost:8080, вход `admin` / `password1234` (остальные логины — ниже). Остановить: `pnpm app:down`, журналы: `pnpm app:logs`. База общая с режимом разработки (`pnpm dev`), данные сохраняются между запусками.
+Без pnpm: `docker compose --profile app up -d --build`. Приложение: http://localhost:8080, вход `admin@user.ru` / `password1234` (остальные — ниже). Остановить: `pnpm app:down`, журналы: `pnpm app:logs`. База общая с режимом разработки (`pnpm dev`), данные сохраняются между запусками.
 
 ## Запуск для разработки
 
@@ -67,7 +67,7 @@ pnpm dev
 - API: http://localhost:3000/api, Swagger: http://localhost:3000/api/docs
 - Файлы в хранилище (SeaweedFS filer): http://localhost:9102
 
-Порты сдвинуты (Postgres `5433`, SeaweedFS `9101` — S3, `9102` — просмотр файлов), чтобы не мешать другим проектам. Пользователи для локальной разработки (пароль у всех `password1234`, задаётся в `backend/.env`): `admin` — администратор, `director` — руководитель, `finance` — финансы, `brigadir1`…`brigadir4` — бригадиры (последние — после `db:seed:demo`).
+Порты сдвинуты (Postgres `5433`, SeaweedFS `9101` — S3, `9102` — просмотр файлов), чтобы не мешать другим проектам. Пользователи для локальной разработки (пароль у всех `password1234`, задаётся в `backend/.env`): `admin@user.ru` — администратор, `director@user.ru` — руководитель, `finance@user.ru` — финансы, `brigadir1@user.ru`…`brigadir4@user.ru` — бригадиры (последние — после `db:seed:demo`).
 
 ## Команды
 

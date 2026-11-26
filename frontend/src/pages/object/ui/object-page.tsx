@@ -1,5 +1,4 @@
 import {
-  DELIVERY_LABELS,
   DOCUMENT_ACCEPT,
   type FileDto,
   type MarkDto,
@@ -8,21 +7,6 @@ import {
   WORK_TYPE_LABELS,
 } from '@contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Archive,
-  ArchiveRestore,
-  ArrowLeft,
-  CalendarDays,
-  Camera,
-  ChevronDown,
-  CircleCheck,
-  Loader2,
-  MessageSquare,
-  Pencil,
-  Plus,
-  Undo2,
-  Upload,
-} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -46,9 +30,9 @@ import {
 } from '@/entities/object';
 import { useTemplates } from '@/entities/refs';
 import { hasRole, isManager, useCurrentUser } from '@/entities/session';
-import { ClaimFormDialog, ClaimSheet } from '@/features/claim';
+import { ClaimFormDialog } from '@/features/claim';
 import { FinanceCard } from '@/features/finance';
-import { MarkStageDrawer } from '@/features/mark-stage';
+import { MarkStageDialog } from '@/features/mark-stage';
 import { ObjectDatesDialog } from '@/features/object-dates';
 import { ObjectFormDialog } from '@/features/object-form';
 import { ObjectReportDialog } from '@/features/object-report';
@@ -69,8 +53,26 @@ import {
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  CalendarDays,
+  Camera,
+  CheckIcon,
+  ChevronDown,
+  CircleCheck,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Undo2,
+  Upload,
+} from '@/shared/ui/icons';
+import { InfiniteFooter } from '@/shared/ui/infinite-footer';
 import { CardsSkeleton, ListSkeleton, ObjectSkeleton, StagesSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { dayOf, InfoCard, PlanDelta, useStagePlan } from './info-card';
 
 export function ObjectPage() {
   const { id = '' } = useParams();
@@ -100,7 +102,7 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
     );
 
   const markButton = (className?: string) => (
-    <MarkStageDrawer
+    <MarkStageDialog
       object={o}
       trigger={
         <Button className={className}>
@@ -249,7 +251,7 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
   const templates = useTemplates();
   const marks = useMarks(o.id);
   const revoke = useRevokeLastMark(o.id);
-  const stages = templates.data?.find((t) => t.id === o.templateId)?.stages ?? [];
+  const { stages, plan } = useStagePlan(o);
   const current = o.currentStage?.order ?? 0;
   const markByStage = new Map((marks.data ?? []).map((m) => [m.stage.id, m]));
 
@@ -316,6 +318,7 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
                 stage={s}
                 current={current}
                 mark={markByStage.get(s.id)}
+                planned={plan.get(s.id)}
                 open={expanded.has(s.id)}
                 onToggle={() => toggle(s.id)}
               />
@@ -332,12 +335,15 @@ function StageRow({
   stage: s,
   current,
   mark,
+  planned,
   open,
   onToggle,
 }: {
   stage: TemplateStageDto;
   current: number;
   mark: MarkDto | undefined;
+  /** Плановая дата этапа: от начала работ по плановым дням */
+  planned: string | undefined;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -348,24 +354,37 @@ function StageRow({
 
   const head = (
     <>
+      {/* Маркер этапа: выполнен — залитый квадрат с галочкой, следующий — рамка цвета бренда */}
       <span
         className={cn(
-          'flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums',
+          'flex size-6 shrink-0 items-center justify-center rounded-sm border text-xs font-medium tabular-nums text-muted-foreground',
           done && 'border-primary bg-primary text-primary-foreground',
+          next && 'border-primary text-primary',
         )}
       >
-        {done ? '✓' : s.order}
+        {done ? <CheckIcon weight="bold" className="size-3.5" /> : s.order}
       </span>
       <div className="min-w-0 flex-1">
         <div className={cn(!done && !next && 'text-muted-foreground')}>
           {s.shortName}
           {next && <span className="ml-2 text-xs text-muted-foreground">следующий</span>}
         </div>
+        {!mark && planned && (
+          <div className="text-xs text-muted-foreground tabular-nums">
+            план {formatDate(planned)}
+          </div>
+        )}
         {mark && (
           <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
             <span>
               {formatDateTime(mark.performedAt)} · {mark.author.fullName}
             </span>
+            {planned && (
+              <span className="tabular-nums">
+                · план {formatDate(planned)}{' '}
+                <PlanDelta plan={planned} fact={dayOf(mark.performedAt)} />
+              </span>
+            )}
             {mark.auto && <span>· вместе со следующим этапом</span>}
             {!open && mark.comment && (
               <span className="flex items-center gap-0.5" title="Есть комментарий">
@@ -424,14 +443,15 @@ function StageRow({
 
 function ObjectClaims({ objectId }: { objectId: string }) {
   const claims = useClaims({ objectId });
-  const [openId, setOpenId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const open = (id: string) => navigate(`/claims/${id}`);
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Рекламации</CardTitle>
         <ClaimFormDialog
           objectId={objectId}
-          onCreated={setOpenId}
+          onCreated={open}
           trigger={
             <Button variant="outline" size="sm">
               <Plus />
@@ -453,7 +473,7 @@ function ObjectClaims({ objectId }: { objectId: string }) {
               <li key={c.id}>
                 <button
                   type="button"
-                  onClick={() => setOpenId(c.id)}
+                  onClick={() => open(c.id)}
                   className="flex w-full items-start gap-3 py-2 text-left hover:bg-muted/40"
                 >
                   <span className="tabular-nums text-muted-foreground">№{c.number}</span>
@@ -470,7 +490,6 @@ function ObjectClaims({ objectId }: { objectId: string }) {
           </ul>
         )}
       </CardContent>
-      <ClaimSheet id={openId} onClose={() => setOpenId(null)} />
     </Card>
   );
 }
@@ -633,52 +652,18 @@ function DocumentsCard({
   );
 }
 
-function InfoCard({ object: o }: { object: ObjectDetails }) {
-  const rows: [string, string][] = [
-    ['Короткий адрес', o.shortAddress],
-    ['Договор', o.contract?.number ?? '—'],
-    ['Сведения о лифте', o.liftInfo ?? '—'],
-    ['Поставка оборудования', DELIVERY_LABELS[o.deliveryStatus]],
-    [
-      'Поставка: план / факт',
-      `${formatDate(o.deliveryPlannedDate)} / ${formatDate(o.deliveryActualDate)}`,
-    ],
-    ['Плановое начало', formatDate(o.plannedStartDate)],
-    ['Открытие объекта', formatDate(o.openedDate)],
-    ['ПТО', formatDate(o.ptoDate)],
-    ['Декларация', formatDate(o.declarationDate)],
-    ['Ввод в эксплуатацию', formatDate(o.commissionedDate)],
-    ['Комиссионная приёмка', formatDate(o.acceptanceDate)],
-    ['КС-2, КС-3', formatDate(o.ksDate)],
-  ];
-  return (
-    <Card>
-      <CardContent>
-        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-          {rows.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-muted-foreground">{k}</dt>
-              <dd className="mb-2 sm:mb-0">{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </CardContent>
-    </Card>
-  );
-}
-
 function HistoryCard({ objectId }: { objectId: string }) {
   const history = useObjectHistory(objectId);
   return (
     <Card>
       <CardContent>
-        {history.isPending ? (
+        {history.query.isPending ? (
           <ListSkeleton rows={4} />
-        ) : !history.data?.length ? (
+        ) : !history.items.length ? (
           <p className="text-sm text-muted-foreground">Записей пока нет</p>
         ) : (
           <ul className="divide-y">
-            {history.data.map((h) => (
+            {history.items.map((h) => (
               <li key={h.id} className="flex flex-wrap justify-between gap-x-4 py-2 text-sm">
                 <div>
                   <div>{h.text}</div>
@@ -693,6 +678,7 @@ function HistoryCard({ objectId }: { objectId: string }) {
             ))}
           </ul>
         )}
+        <InfiniteFooter {...history.paging} />
       </CardContent>
     </Card>
   );

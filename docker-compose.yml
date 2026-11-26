@@ -114,7 +114,7 @@ services:
       target: backend
     environment:
       <<: *backend-env
-      SEED_ADMIN_LOGIN: admin
+      SEED_ADMIN_EMAIL: admin@user.ru
       SEED_ADMIN_PASSWORD: ${SEED_PASSWORD:-password1234}
       SEED_DEMO_PASSWORD: ${SEED_PASSWORD:-password1234}
     command: ["sh", "-c", "npx prisma db seed && npx tsx prisma/seed-demo.ts"]

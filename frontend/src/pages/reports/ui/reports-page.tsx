@@ -1,6 +1,5 @@
 import { type ImportResultDto, WORK_TYPE_LABELS, WORK_TYPES, type WorkType } from '@contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useBrigades, useContracts } from '@/entities/refs';
@@ -19,6 +18,7 @@ import {
 } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { FileSpreadsheet, Loader2, Upload } from '@/shared/ui/icons';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 

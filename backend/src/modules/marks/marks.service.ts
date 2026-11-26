@@ -10,7 +10,7 @@ import type { Env } from '../../common/config/env.js';
 import { daysBetween, todayIn } from '../../common/lib/dates.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
-  type ControlDate,
+  CONTROL_DATE_FIELDS,
   MARK_BACKDATE_DAYS,
   type MarkCreate,
   type MarkDto,
@@ -19,15 +19,6 @@ import {
 import type { Prisma } from '../../generated/prisma/client.js';
 import { toFileDto } from '../files/files.service.js';
 import { ObjectsService } from '../objects/objects.service.js';
-
-/** Какие даты объекта ставит отметка этапа с признаком `setsDate`. Ставятся, только если пусты. */
-const CONTROL_DATE_FIELDS: Record<ControlDate, (keyof Prisma.LiftObjectUpdateInput)[]> = {
-  PTO: ['ptoDate', 'declarationDate'],
-  DECLARATION: ['declarationDate'],
-  COMMISSIONING: ['commissionedDate'],
-  ACCEPTANCE: ['acceptanceDate', 'commissionedDate'],
-  KS: ['ksDate'],
-};
 
 const markInclude = {
   stage: { select: { id: true, order: true, shortName: true, percent: true } },

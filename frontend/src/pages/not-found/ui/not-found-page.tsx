@@ -1,7 +1,7 @@
-import { ArrowLeft, House } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { Button } from '@/shared/ui/button';
 import { ElevatorScene } from '@/shared/ui/elevator-scene';
+import { ArrowLeft, House } from '@/shared/ui/icons';
 
 export function NotFoundPage() {
   const navigate = useNavigate();

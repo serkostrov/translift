@@ -20,12 +20,12 @@ let seq = 0;
 /** Создаёт пользователя и возвращает агент supertest с его сессией. */
 export async function signIn(app: NestExpressApplication, role: Role) {
   const prisma = app.get(PrismaService);
-  const login = `test-${role.toLowerCase()}-${Date.now()}-${seq++}`;
+  const email = `test-${role.toLowerCase()}-${Date.now()}-${seq++}@test.ru`;
   const password = 'test-password-1';
   const user = await prisma.user.create({
-    data: { login, fullName: `Тест ${role}`, role, passwordHash: await hashPassword(password) },
+    data: { email, fullName: `Тест ${role}`, role, passwordHash: await hashPassword(password) },
   });
   const agent = request.agent(app.getHttpServer());
-  await agent.post('/api/auth/login').send({ method: 'login', value: login, password }).expect(200);
+  await agent.post('/api/auth/login').send({ email, password }).expect(200);
   return { agent, user };
 }

@@ -1,16 +1,4 @@
 import { ROLE_LABELS, type Role } from '@contracts';
-import {
-  Bell,
-  BookOpen,
-  Building2,
-  FileSpreadsheet,
-  FileWarning,
-  HardDrive,
-  LayoutDashboard,
-  type LucideIcon,
-  Smartphone,
-  Users,
-} from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useNotifications } from '@/entities/notification';
@@ -18,12 +6,24 @@ import { hasRole, useCurrentUser } from '@/entities/session';
 import { ThemeToggle } from '@/features/theme-toggle';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
+import {
+  Bell,
+  BookOpen,
+  Building2,
+  FileSpreadsheet,
+  FileWarning,
+  HardDrive,
+  type IconComponent,
+  LayoutDashboard,
+  Smartphone,
+  Users,
+} from '@/shared/ui/icons';
 import { Logo } from '@/shared/ui/logo';
 
 type NavItem = {
   to: string;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   roles?: Role[];
   /** false — не показывать в нижней панели телефона */
   mobile?: boolean;
@@ -91,17 +91,23 @@ export function AppLayout() {
               end={to === '/'}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted',
-                  isActive && 'bg-muted font-medium',
+                  'relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground',
+                  // Активный раздел — фирменным цветом и полоской слева
+                  isActive &&
+                    'bg-accent font-medium text-accent-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.75 before:rounded-full before:bg-primary hover:bg-accent hover:text-accent-foreground',
                 )
               }
             >
-              <Icon className="size-4" />
-              {label}
-              {to === '/notifications' && unread > 0 && (
-                <span className="ml-auto rounded-full bg-destructive px-1.5 text-xs text-white tabular-nums">
-                  {unread}
-                </span>
+              {({ isActive }) => (
+                <>
+                  <Icon className="size-[18px]" weight={isActive ? 'fill' : 'regular'} />
+                  {label}
+                  {to === '/notifications' && unread > 0 && (
+                    <span className="ml-auto rounded-full bg-destructive px-1.5 text-xs text-white tabular-nums">
+                      {unread}
+                    </span>
+                  )}
+                </>
               )}
             </NavLink>
           ))}
@@ -170,12 +176,16 @@ export function AppLayout() {
                 className={({ isActive }) =>
                   cn(
                     'flex flex-col items-center gap-0.5 py-2 text-[11px] text-muted-foreground',
-                    isActive && 'text-foreground',
+                    isActive && 'font-medium text-primary',
                   )
                 }
               >
-                <Icon className="size-5" />
-                {label}
+                {({ isActive }) => (
+                  <>
+                    <Icon className="size-6" weight={isActive ? 'fill' : 'regular'} />
+                    {label}
+                  </>
+                )}
               </NavLink>
             ))}
           </nav>
