@@ -17,6 +17,9 @@
     "format": "biome format --write .",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
+    "app:up": "docker compose --profile app up -d --build",
+    "app:down": "docker compose --profile app down",
+    "app:logs": "docker compose --profile app logs -f --tail=100 backend web",
     "db:migrate": "pnpm --filter backend db:migrate",
     "db:seed": "pnpm --filter backend db:seed",
     "db:studio": "pnpm --filter backend db:studio"

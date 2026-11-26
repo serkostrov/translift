@@ -27,7 +27,7 @@ describe('Health и авторизация (e2e)', () => {
   it('неверный пароль — 401 с понятным текстом', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ login: 'nobody', password: 'wrong' })
+      .send({ method: 'login', value: 'nobody', password: 'wrong' })
       .expect(401);
     expect(res.body.message).toBe('Неверный логин или пароль');
   });
@@ -60,7 +60,7 @@ describe('Health и авторизация (e2e)', () => {
     const other = request.agent(app.getHttpServer());
     await other
       .post('/api/auth/login')
-      .send({ login: user.login, password: 'test-password-1' })
+      .send({ method: 'login', value: user.login, password: 'test-password-1' })
       .expect(200);
 
     const prof = await agent
@@ -69,7 +69,7 @@ describe('Health и авторизация (e2e)', () => {
       .expect(200);
     expect(prof.body).toMatchObject({
       fullName: 'Пётр Новиков',
-      phone: '+7 900 000-00-00',
+      phone: '+79000000000',
       sessions: 2,
     });
 
@@ -85,7 +85,7 @@ describe('Health и авторизация (e2e)', () => {
     await other.get('/api/auth/me').expect(401);
     await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ login: user.login, password: 'new-password-1' })
+      .send({ method: 'login', value: user.login, password: 'new-password-1' })
       .expect(200);
   });
 });

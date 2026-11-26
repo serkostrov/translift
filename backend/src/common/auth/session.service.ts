@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { SessionUser } from '../../contracts/index.js';
+import type { User } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 export const SESSION_COOKIE = 'tl_sid';
@@ -49,14 +50,7 @@ export class SessionService {
       });
     }
 
-    const { user } = session;
-    return {
-      id: user.id,
-      login: user.login,
-      fullName: user.fullName,
-      role: user.role,
-      brigadeId: user.ledBrigade?.id ?? null,
-    };
+    return toSessionUser(session.user);
   }
 
   async revoke(token: string) {
@@ -74,3 +68,16 @@ export class SessionService {
     await this.prisma.session.deleteMany({ where: { userId } });
   }
 }
+
+type UserForSession = Pick<User, 'id' | 'login' | 'fullName' | 'role' | 'mustChangePassword'> & {
+  ledBrigade: { id: string } | null;
+};
+
+export const toSessionUser = (user: UserForSession): SessionUser => ({
+  id: user.id,
+  login: user.login,
+  fullName: user.fullName,
+  role: user.role,
+  brigadeId: user.ledBrigade?.id ?? null,
+  mustChangePassword: user.mustChangePassword,
+});

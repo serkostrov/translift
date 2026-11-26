@@ -96,12 +96,14 @@ async function main() {
   const password = process.env.SEED_DEMO_PASSWORD;
   if (!password) throw new Error('Задайте SEED_DEMO_PASSWORD в .env');
   const passwordHash = await hashPassword(password);
+  // Повторный запуск возвращает демо-пароль и снимает «временный пароль» и запросы на сброс
+  const reset = { passwordHash, mustChangePassword: false, passwordResetRequestedAt: null };
 
   // Офисные роли для показа: руководитель и сотрудник с доступом к финансам
   for (const u of OFFICE_USERS) {
     await prisma.user.upsert({
       where: { login: u.login },
-      update: { passwordHash },
+      update: reset,
       create: { ...u, passwordHash },
     });
   }
@@ -110,7 +112,7 @@ async function main() {
   for (const b of BRIGADES) {
     await prisma.user.upsert({
       where: { login: b.login },
-      update: { passwordHash },
+      update: reset,
       create: { login: b.login, fullName: b.fullName, role: 'FOREMAN', passwordHash },
     });
   }
@@ -124,7 +126,7 @@ async function main() {
   for (const b of BRIGADES) {
     const foreman = await prisma.user.upsert({
       where: { login: b.login },
-      update: { passwordHash },
+      update: reset,
       create: { login: b.login, fullName: b.fullName, role: 'FOREMAN', passwordHash },
     });
     brigades.push(

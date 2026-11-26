@@ -20,6 +20,8 @@ export type BrigadeDto = {
   foreman: { id: string; fullName: string } | null;
   /** Объектов в работе (не сданных) */
   activeObjects: number;
+  /** Ни одного объекта, даже сданного, — можно удалить совсем */
+  canDelete: boolean;
 };
 
 // ---------- Заказчики и договоры ----------

@@ -5,22 +5,26 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
-import { useBrigades, useSaveBrigade, useUsers } from '@/entities/refs';
+import { useBrigades, useDeleteBrigade, useSaveBrigade, useUsers } from '@/entities/refs';
 import { errorMessage } from '@/shared/api/http';
+import { ArchiveActions } from '@/shared/ui/archive-actions';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Checkbox } from '@/shared/ui/checkbox';
 import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
+import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { FormDialog } from './form-dialog';
 
 type FormInput = z.input<typeof brigadeUpsertSchema>;
 
 export function BrigadesTab() {
   const brigades = useBrigades();
   const [editing, setEditing] = useState<BrigadeDto | 'new' | null>(null);
+  const [showArchive, setShowArchive] = useState(false);
+  const all = brigades.data ?? [];
+  const archived = all.filter((b) => !b.isActive).length;
+  const rows = showArchive ? all.filter((b) => !b.isActive) : all.filter((b) => b.isActive);
 
   return (
     <div className="space-y-3">
@@ -28,13 +32,23 @@ export function BrigadesTab() {
         <p className="text-sm text-muted-foreground">
           Бригадир — пользователь с ролью «Бригадир». Он видит в телефоне объекты своей бригады.
         </p>
-        <Button onClick={() => setEditing('new')}>
-          <Plus />
-          Бригада
-        </Button>
+        <div className="flex gap-2">
+          {(archived > 0 || showArchive) && (
+            <Button variant="outline" onClick={() => setShowArchive((v) => !v)}>
+              {showArchive ? 'Действующие' : `Архив (${archived})`}
+            </Button>
+          )}
+          {!showArchive && (
+            <Button onClick={() => setEditing('new')}>
+              <Plus />
+              Бригада
+            </Button>
+          )}
+        </div>
       </div>
       <DataList
-        rows={brigades.data ?? []}
+        rows={rows}
+        empty={showArchive ? 'В архиве пусто' : 'Бригад пока нет'}
         rowKey={(b) => b.id}
         onRowClick={setEditing}
         columns={[
@@ -44,7 +58,7 @@ export function BrigadesTab() {
             mobile: 'title',
             cell: (b) => (
               <span className="font-medium">
-                {b.name} {!b.isActive && <Badge variant="outline">не активна</Badge>}
+                {b.name} {!b.isActive && <Badge variant="outline">в архиве</Badge>}
               </span>
             ),
           },
@@ -75,6 +89,7 @@ export function BrigadesTab() {
 
 function BrigadeDialog({ brigade, onClose }: { brigade: BrigadeDto | null; onClose: () => void }) {
   const save = useSaveBrigade();
+  const remove = useDeleteBrigade();
   const foremen = useUsers('FOREMAN');
   const brigades = useBrigades();
   const taken = new Set(
@@ -86,10 +101,18 @@ function BrigadeDialog({ brigade, onClose }: { brigade: BrigadeDto | null; onClo
       name: brigade?.name ?? '',
       headcount: brigade?.headcount ?? 3,
       foremanId: brigade?.foreman?.id ?? null,
-      isActive: brigade?.isActive ?? true,
     },
   });
   const { errors } = form.formState;
+
+  const act = (p: Promise<unknown>, done: string) =>
+    p.then(
+      () => {
+        toast.success(done);
+        onClose();
+      },
+      (e) => toast.error(errorMessage(e)),
+    );
 
   const onSubmit = form.handleSubmit(async (body) => {
     try {
@@ -138,20 +161,30 @@ function BrigadeDialog({ brigade, onClose }: { brigade: BrigadeDto | null; onClo
         <Input id="headcount" type="number" inputMode="numeric" {...form.register('headcount')} />
         <FieldError errors={[errors.headcount]} />
       </Field>
-      <Field orientation="horizontal">
-        <Controller
-          control={form.control}
-          name="isActive"
-          render={({ field }) => (
-            <Checkbox
-              id="isActive"
-              checked={field.value}
-              onCheckedChange={(v) => field.onChange(v === true)}
-            />
-          )}
+      {brigade && (
+        <ArchiveActions
+          archived={!brigade.isActive}
+          canDelete={brigade.canDelete}
+          busy={save.isPending || remove.isPending}
+          archiveBlocked={
+            brigade.activeObjects > 0
+              ? `В архив нельзя: на бригаде ${brigade.activeObjects} об. в работе — сначала назначьте их другой бригаде.`
+              : undefined
+          }
+          archiveText="Бригада пропадёт из выбора при назначении объектов. Сданные объекты и отчёты останутся с ней."
+          cannotDeleteText="Удалить нельзя: у бригады есть объекты в истории."
+          onArchive={() =>
+            act(save.mutateAsync({ id: brigade.id, body: { isActive: false } }), 'Бригада в архиве')
+          }
+          onRestore={() =>
+            act(
+              save.mutateAsync({ id: brigade.id, body: { isActive: true } }),
+              'Бригада снова в работе',
+            )
+          }
+          onDelete={() => act(remove.mutateAsync(brigade.id), 'Бригада удалена')}
         />
-        <FieldLabel htmlFor="isActive">Активна</FieldLabel>
-      </Field>
+      )}
     </FormDialog>
   );
 }

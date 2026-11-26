@@ -26,6 +26,7 @@ const ReportsPage = page(() => import('@/pages/reports'), 'ReportsPage');
 const NotificationsPage = page(() => import('@/pages/notifications'), 'NotificationsPage');
 const ProfilePage = page(() => import('@/pages/profile'), 'ProfilePage');
 const RefsPage = page(() => import('@/pages/refs'), 'RefsPage');
+const UsersPage = page(() => import('@/pages/users'), 'UsersPage');
 const StoragePage = page(() => import('@/pages/storage'), 'StoragePage');
 
 function Lazy({ children, roles }: { children: ReactNode; roles?: Role[] }) {
@@ -123,6 +124,14 @@ export const router = createBrowserRouter([
             element: (
               <Lazy roles={['ADMIN', 'MANAGER']}>
                 <RefsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'users',
+            element: (
+              <Lazy roles={['ADMIN']}>
+                <UsersPage />
               </Lazy>
             ),
           },

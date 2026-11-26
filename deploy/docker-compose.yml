@@ -45,6 +45,7 @@ services:
       # Нужны только для первого запуска seed (создание администратора)
       SEED_ADMIN_LOGIN: ${SEED_ADMIN_LOGIN:-admin}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_ADMIN_RESET: ${SEED_ADMIN_RESET:-false}
     healthcheck:
       test:
         [

@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Smartphone,
+  Users,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
@@ -42,6 +43,7 @@ const NAV: NavItem[] = [
   },
   { to: '/notifications', label: 'Уведомления', icon: Bell, mobile: false },
   { to: '/refs', label: 'Справочники', icon: BookOpen, roles: ['ADMIN', 'MANAGER'] },
+  { to: '/users', label: 'Пользователи', icon: Users, roles: ['ADMIN'], mobile: false },
   { to: '/storage', label: 'Хранилище', icon: HardDrive, roles: ['ADMIN'], mobile: false },
 ];
 

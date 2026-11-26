@@ -12,9 +12,9 @@ import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { DataList } from '@/shared/ui/data-list';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
+import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
-import { FormDialog } from './form-dialog';
 
 type FormInput = z.input<typeof contractUpsertSchema> & { newCustomer?: string };
 

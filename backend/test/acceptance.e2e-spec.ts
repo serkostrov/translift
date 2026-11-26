@@ -45,7 +45,7 @@ describe('Приёмка по ТЗ: 8 критериев', () => {
   let foremanLogin: string;
 
   const login = async (a: ReturnType<typeof agent>, l: string) =>
-    a.post('/api/auth/login').send({ login: l, password: PASSWORD }).expect(200);
+    a.post('/api/auth/login').send({ method: 'login', value: l, password: PASSWORD }).expect(200);
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());

@@ -66,12 +66,16 @@ async function seedAdmin() {
   const login = process.env.SEED_ADMIN_LOGIN;
   const password = process.env.SEED_ADMIN_PASSWORD;
   if (!login || !password) return;
+  const passwordHash = await hashPassword(password);
+  // SEED_ADMIN_RESET=true — аварийное восстановление, если администратор забыл пароль:
+  // пароль из SEED_ADMIN_PASSWORD становится временным, доступ и роль возвращаются
+  const reset = process.env.SEED_ADMIN_RESET === 'true';
   await prisma.user.upsert({
     where: { login },
-    update: {},
+    update: reset ? { passwordHash, mustChangePassword: true, isActive: true, role: 'ADMIN' } : {},
     create: {
       login,
-      passwordHash: await hashPassword(password),
+      passwordHash,
       fullName: 'Администратор',
       role: 'ADMIN',
     },
@@ -81,4 +85,8 @@ async function seedAdmin() {
 await seedTemplates();
 await seedAdmin();
 await prisma.$disconnect();
-console.warn('Seed: шаблоны этапов и администратор готовы');
+console.warn(
+  process.env.SEED_ADMIN_RESET === 'true'
+    ? 'Seed: пароль администратора сброшен, при входе он придумает новый'
+    : 'Seed: шаблоны этапов и администратор готовы',
+);

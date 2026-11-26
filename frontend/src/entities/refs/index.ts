@@ -1,12 +1,16 @@
 export {
   useBrigades,
   useContracts,
+  useCreateUser,
   useCustomers,
+  useDeleteBrigade,
+  useDeleteUser,
+  useResetPassword,
   useSaveBrigade,
   useSaveContract,
   useSaveCustomer,
   useSaveTemplateStage,
-  useSaveUser,
   useTemplates,
+  useUpdateUser,
   useUsers,
 } from './api/refs';

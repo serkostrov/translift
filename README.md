@@ -13,10 +13,20 @@
 | -------------------- | --------------------------------------------------------------------- |
 | `backend/`           | NestJS 12 (ESM), Prisma 7 + PostgreSQL, S3 (MinIO)                    |
 | `frontend/`          | React 19 + Vite, shadcn/ui (Radix), TanStack Query, React Router, FSD |
-| `docker-compose.yml` | Локальные PostgreSQL и MinIO                                          |
+| `docker-compose.yml` | Локальные PostgreSQL и MinIO; профиль `app` — всё приложение          |
 | `deploy/`            | Сборка и запуск на сервере: Dockerfile, compose, Caddy, копии         |
 
-## Запуск локально
+## Запуск целиком в Docker
+
+Нужен только Docker. Собирает рабочие образы (как на сервере), поднимает базу, хранилище, backend и web, загружает демо-данные:
+
+```bash
+pnpm app:up
+```
+
+Без pnpm: `docker compose --profile app up -d --build`. Приложение: http://localhost:8080, вход `admin` / `password1234` (остальные логины — ниже). Остановить: `pnpm app:down`, журналы: `pnpm app:logs`. База общая с режимом разработки (`pnpm dev`), данные сохраняются между запусками.
+
+## Запуск для разработки
 
 Нужны Node 22+, pnpm 10 и Docker.
 
@@ -70,3 +80,4 @@ pnpm dev
 | `pnpm db:migrate`                   | Создать и применить миграцию Prisma                |
 | `pnpm db:studio`                    | Prisma Studio                                      |
 | `pnpm infra:up` / `pnpm infra:down` | Поднять или остановить Postgres и MinIO            |
+| `pnpm app:up` / `pnpm app:down`     | Всё приложение в Docker на http://localhost:8080   |

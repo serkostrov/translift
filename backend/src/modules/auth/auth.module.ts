@@ -7,7 +7,13 @@ import { AuthController } from './auth.controller.js';
 
 @Global()
 @Module({
-  imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 600 }])],
+  imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 600 }],
+      // В e2e один «клиент» входит десятки раз подряд — лимит там мешает
+      skipIf: () => process.env.THROTTLE_DISABLED === 'true',
+    }),
+  ],
   controllers: [AuthController],
   providers: [
     SessionService,

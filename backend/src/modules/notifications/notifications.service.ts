@@ -87,6 +87,7 @@ export class NotificationsService implements OnApplicationBootstrap {
       fullName: '',
       role: 'ADMIN' as const,
       brigadeId: null,
+      mustChangePassword: false,
     };
     const items = await this.objects.list({}, system);
     const since = new Date(Date.now() - REPEAT_RISK_DAYS * 86_400_000);

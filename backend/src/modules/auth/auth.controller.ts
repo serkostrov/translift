@@ -15,24 +15,35 @@ import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import type { z } from 'zod';
-import { type AuthedRequest, CurrentUser, Public } from '../../common/auth/decorators.js';
+import { assertContactsFree } from '../../common/auth/contacts.js';
+import {
+  AllowPendingPassword,
+  type AuthedRequest,
+  CurrentUser,
+  Public,
+} from '../../common/auth/decorators.js';
 import { hashPassword, verifyPassword } from '../../common/auth/password.js';
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
   SessionService,
+  toSessionUser,
 } from '../../common/auth/session.service.js';
 import type { Env } from '../../common/config/env.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
-  type LoginInput,
+  type LoginMethod,
   loginSchema,
   type PasswordChange,
   type ProfileDto,
   passwordChangeSchema,
+  passwordResetRequestSchema,
   profileUpdateSchema,
   type SessionUser,
 } from '../../contracts/index.js';
+
+const byIdentifier = ({ method, value }: { method: LoginMethod; value: string }) =>
+  method === 'login' ? { login: value } : method === 'email' ? { email: value } : { phone: value };
 
 /** Хеш для несуществующего логина: проверка идёт столько же, сколько для настоящего. */
 const DUMMY_HASH = await hashPassword('dummy-password-for-timing');
@@ -51,17 +62,24 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   async login(
-    @Body({ schema: loginSchema }) body: LoginInput,
+    @Body({ schema: loginSchema }) body: z.output<typeof loginSchema>,
     @Req() req: AuthedRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionUser> {
+    // Логин, почта или телефон — по выбору на экране входа; поле называется так же, как способ
     const user = await this.prisma.user.findUnique({
-      where: { login: body.login.toLowerCase() },
+      where: byIdentifier(body),
       include: { ledBrigade: { select: { id: true } } },
     });
     const ok = await verifyPassword(body.password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok || !user.isActive)
-      throw new UnauthorizedException('Неверный логин или пароль');
+      throw new UnauthorizedException(
+        body.method === 'login'
+          ? 'Неверный логин или пароль'
+          : body.method === 'email'
+            ? 'Неверная почта или пароль'
+            : 'Неверный телефон или пароль',
+      );
 
     const token = await this.sessions.create(user.id, req.headers['user-agent']);
     res.cookie(SESSION_COOKIE, token, {
@@ -71,13 +89,49 @@ export class AuthController {
       maxAge: SESSION_TTL_MS,
       path: '/',
     });
-    return {
-      id: user.id,
-      login: user.login,
-      fullName: user.fullName,
-      role: user.role,
-      brigadeId: user.ledBrigade?.id ?? null,
-    };
+    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    return toSessionUser(user);
+  }
+
+  /**
+   * «Забыли пароль?» Почты и СМС нет (внешние рассылки вне ТЗ), поэтому запрос уходит
+   * администраторам: они видят его в уведомлениях и в разделе «Пользователи» и выдают
+   * временный пароль. Ответ одинаковый для любого логина — по нему нельзя узнать,
+   * существует ли пользователь.
+   */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
+  @Post('password-reset-request')
+  @HttpCode(204)
+  async requestPasswordReset(
+    @Body({ schema: passwordResetRequestSchema })
+    body: z.output<typeof passwordResetRequestSchema>,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: byIdentifier(body) });
+    if (!user?.isActive) return;
+    // Повторные нажатия в течение часа не плодят уведомления
+    const hourAgo = Date.now() - 60 * 60_000;
+    if (user.passwordResetRequestedAt && user.passwordResetRequestedAt.getTime() > hourAgo) return;
+
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', isActive: true, id: { not: user.id } },
+      select: { id: true },
+    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordResetRequestedAt: new Date() },
+      }),
+      this.prisma.notification.createMany({
+        data: admins.map((a) => ({
+          userId: a.id,
+          level: 'WARNING' as const,
+          topic: 'Пароль',
+          text: `${user.fullName} (${user.login}) не может войти и просит новый пароль. Выдайте его в разделе «Пользователи».`,
+          dedupeKey: `password-reset:${user.id}`,
+        })),
+      }),
+    ]);
   }
 
   @Public()
@@ -89,11 +143,13 @@ export class AuthController {
     res.clearCookie(SESSION_COOKIE, { path: '/' });
   }
 
+  @AllowPendingPassword()
   @Get('me')
   me(@CurrentUser() user: SessionUser): SessionUser {
     return user;
   }
 
+  @AllowPendingPassword()
   @Get('profile')
   profile(@CurrentUser() user: SessionUser): Promise<ProfileDto> {
     return this.loadProfile(user.id);
@@ -105,11 +161,16 @@ export class AuthController {
     @Body({ schema: profileUpdateSchema }) body: z.output<typeof profileUpdateSchema>,
     @CurrentUser() user: SessionUser,
   ): Promise<ProfileDto> {
+    await assertContactsFree(this.prisma, body, user.id);
     await this.prisma.user.update({ where: { id: user.id }, data: body });
     return this.loadProfile(user.id);
   }
 
-  /** Смена пароля: нужен текущий; остальные устройства выходят из системы. */
+  /**
+   * Смена пароля: нужен текущий, кроме случая, когда пароль временный (его только что
+   * ввели при входе). Остальные устройства выходят из системы.
+   */
+  @AllowPendingPassword()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('password')
   @HttpCode(204)
@@ -119,12 +180,19 @@ export class AuthController {
     @Req() req: AuthedRequest,
   ) {
     const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    if (!(await verifyPassword(body.current, row.passwordHash))) {
+    if (!row.mustChangePassword && !(await verifyPassword(body.current ?? '', row.passwordHash))) {
       throw new BadRequestException('Текущий пароль указан неверно');
+    }
+    if (await verifyPassword(body.next, row.passwordHash)) {
+      throw new BadRequestException('Новый пароль совпадает с текущим');
     }
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash: await hashPassword(body.next) },
+      data: {
+        passwordHash: await hashPassword(body.next),
+        mustChangePassword: false,
+        passwordResetRequestedAt: null,
+      },
     });
     const token: unknown = req.cookies?.[SESSION_COOKIE];
     await this.sessions.revokeOthers(user.id, typeof token === 'string' ? token : '');
@@ -152,6 +220,8 @@ export class AuthController {
       fullName: u.fullName,
       role: u.role,
       brigadeId: u.ledBrigade?.id ?? null,
+      mustChangePassword: u.mustChangePassword,
+      email: u.email,
       phone: u.phone,
       brigade: u.ledBrigade,
       sessions: u._count.sessions,

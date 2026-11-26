@@ -1,8 +1,16 @@
 import { type LoginInput, loginSchema } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useState } from 'react';
+import { useController, useForm } from 'react-hook-form';
 import { Navigate, useLocation, useNavigate } from 'react-router';
+import type { z } from 'zod';
 import { useLogin, useSession } from '@/entities/session';
+import {
+  ForgotPasswordDialog,
+  IdentifierField,
+  lastLoginMethod,
+  rememberLoginMethod,
+} from '@/features/set-password';
 import { ThemeToggle } from '@/features/theme-toggle';
 import { errorMessage } from '@/shared/api/http';
 import { Button } from '@/shared/ui/button';
@@ -16,15 +24,23 @@ export function LoginPage() {
   const login = useLogin();
   const navigate = useNavigate();
   const from = (useLocation().state as { from?: string } | null)?.from ?? '/';
-  const form = useForm<LoginInput>({
+  const [forgot, setForgot] = useState(false);
+  const form = useForm<LoginInput, unknown, z.output<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { login: '', password: '' },
+    defaultValues: { method: lastLoginMethod(), value: '', password: '' },
   });
+  const method = form.watch('method');
+  const value = useController({ control: form.control, name: 'value' });
 
   if (session.data) return <Navigate to={from} replace />;
 
   const onSubmit = form.handleSubmit((values) =>
-    login.mutate(values, { onSuccess: () => navigate(from, { replace: true }) }),
+    login.mutate(values, {
+      onSuccess: () => {
+        rememberLoginMethod(values.method);
+        navigate(from, { replace: true });
+      },
+    }),
   );
 
   return (
@@ -41,17 +57,21 @@ export function LoginPage() {
         <CardContent>
           <form onSubmit={onSubmit} noValidate>
             <FieldGroup>
-              <Field data-invalid={!!form.formState.errors.login}>
-                <FieldLabel htmlFor="login">Логин</FieldLabel>
-                <Input
-                  id="login"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  autoFocus
-                  {...form.register('login')}
-                />
-                <FieldError errors={[form.formState.errors.login]} />
-              </Field>
+              <IdentifierField
+                id="login"
+                autoFocus
+                method={method}
+                onMethodChange={(m) => {
+                  form.setValue('method', m);
+                  form.setValue('value', '');
+                  form.clearErrors('value');
+                  login.reset();
+                }}
+                value={value.field.value}
+                onChange={value.field.onChange}
+                onBlur={value.field.onBlur}
+                error={form.formState.errors.value}
+              />
               <Field data-invalid={!!form.formState.errors.password}>
                 <FieldLabel htmlFor="password">Пароль</FieldLabel>
                 <Input
@@ -70,10 +90,24 @@ export function LoginPage() {
               <Button type="submit" size="lg" disabled={login.isPending}>
                 {login.isPending ? 'Входим…' : 'Войти'}
               </Button>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-muted-foreground"
+                onClick={() => setForgot(true)}
+              >
+                Забыли пароль?
+              </Button>
             </FieldGroup>
           </form>
         </CardContent>
       </Card>
+      <ForgotPasswordDialog
+        open={forgot}
+        onOpenChange={setForgot}
+        defaultMethod={method}
+        defaultValue={form.getValues('value')}
+      />
     </div>
   );
 }

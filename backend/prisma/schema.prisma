@@ -22,17 +22,25 @@ enum Role {
 }
 
 model User {
-  id                  String    @id @default(uuid(7)) @db.Uuid
-  login               String    @unique
-  passwordHash        String
-  fullName            String
-  phone               String?
-  role                Role
-  isActive            Boolean   @default(true)
-  createdAt           DateTime  @default(now()) @db.Timestamptz
-  updatedAt           DateTime  @updatedAt @db.Timestamptz
+  id                       String    @id @default(uuid(7)) @db.Uuid
+  login                    String    @unique
+  passwordHash             String
+  fullName                 String
+  /// Вход возможен по логину, почте или телефону — все три уникальны
+  email                    String?   @unique
+  /// E.164: +79001234567
+  phone                    String?   @unique
+  role                     Role
+  isActive                 Boolean   @default(true)
+  createdAt                DateTime  @default(now()) @db.Timestamptz
+  updatedAt                DateTime  @updatedAt @db.Timestamptz
   /// Уведомления до этого момента считаются прочитанными
-  notificationsReadAt DateTime? @db.Timestamptz
+  notificationsReadAt      DateTime? @db.Timestamptz
+  /// Пароль выдал администратор — при входе система попросит придумать свой
+  mustChangePassword       Boolean   @default(false)
+  lastLoginAt              DateTime? @db.Timestamptz
+  /// Сотрудник нажал «Забыли пароль?» и ждёт, когда администратор выдаст новый
+  passwordResetRequestedAt DateTime? @db.Timestamptz
 
   ledBrigade    Brigade?       @relation("BrigadeForeman")
   sessions      Session[]

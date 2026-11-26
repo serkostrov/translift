@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Role } from '../../contracts/index.js';
-import { type AuthedRequest, IS_PUBLIC, ROLES } from './decorators.js';
+import { ALLOW_PENDING_PASSWORD, type AuthedRequest, IS_PUBLIC, ROLES } from './decorators.js';
 import { SESSION_COOKIE, SessionService } from './session.service.js';
 
 /** Глобальный guard: всё закрыто, кроме `@Public()`; `@Roles()` сужает доступ. */
@@ -28,6 +28,13 @@ export class AuthGuard implements CanActivate {
     const user = typeof token === 'string' ? await this.sessions.resolve(token) : null;
     if (!user) throw new UnauthorizedException('Требуется вход');
     req.user = user;
+
+    if (
+      user.mustChangePassword &&
+      !this.reflector.getAllAndOverride<boolean>(ALLOW_PENDING_PASSWORD, targets)
+    ) {
+      throw new ForbiddenException('Сначала придумайте свой пароль вместо временного');
+    }
 
     const roles = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES, targets);
     if (roles && !roles.includes(user.role)) throw new ForbiddenException('Недостаточно прав');

@@ -1,4 +1,15 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { MANAGERS, Roles } from '../../common/auth/decorators.js';
 import { fromDateString, toDateString } from '../../common/lib/dates.js';
@@ -31,6 +42,8 @@ export const ACTIVE_OBJECT: Prisma.LiftObjectWhereInput = {
 const brigadeInclude = {
   foreman: { select: { id: true, fullName: true } },
   _count: { select: { objects: { where: ACTIVE_OBJECT } } },
+  // Хоть один объект, даже сданный или в архиве: тогда бригаду не удалить, только в архив
+  objects: { select: { id: true }, take: 1 },
 } as const;
 type BrigadeRow = Prisma.BrigadeGetPayload<{ include: typeof brigadeInclude }>;
 
@@ -41,6 +54,7 @@ const brigadeDto = (b: BrigadeRow): BrigadeDto => ({
   isActive: b.isActive,
   foreman: b.foreman,
   activeObjects: b._count.objects,
+  canDelete: b.objects.length === 0,
 });
 
 @ApiTags('refs')
@@ -71,9 +85,31 @@ export class BrigadesController {
     @Body({ schema: brigadeUpsertSchema.partial() }) body: Partial<BrigadeUpsert>,
   ): Promise<BrigadeDto> {
     await this.assertForeman(body.foremanId);
+    if (body.isActive === false) {
+      const active = await this.prisma.liftObject.count({
+        where: { brigadeId: id, ...ACTIVE_OBJECT },
+      });
+      if (active) {
+        throw new ConflictException(
+          `У бригады ${active} объект(ов) в работе — сначала назначьте их другой бригаде`,
+        );
+      }
+    }
     return brigadeDto(
       await this.prisma.brigade.update({ where: { id }, data: body, include: brigadeInclude }),
     );
+  }
+
+  /** Удалить можно бригаду без единого объекта (заведена по ошибке). Остальные — в архив. */
+  @Roles(...MANAGERS)
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@Param('id', { schema: idSchema }) id: string) {
+    const objects = await this.prisma.liftObject.count({ where: { brigadeId: id } });
+    if (objects) {
+      throw new ConflictException('У бригады есть объекты — удалить нельзя, отправьте в архив');
+    }
+    await this.prisma.brigade.delete({ where: { id } });
   }
 
   private async assertForeman(userId: string | null | undefined) {

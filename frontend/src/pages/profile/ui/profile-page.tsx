@@ -1,4 +1,5 @@
 import {
+  formatPhone,
   type PasswordChange,
   type ProfileDto,
   type ProfileUpdate,
@@ -16,11 +17,13 @@ import {
   LogOut,
   type LucideIcon,
   MonitorSmartphone,
+  Users,
 } from 'lucide-react';
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
+import type { z } from 'zod';
 import { hasRole, sessionKey, useCurrentUser, useLogout } from '@/entities/session';
 import { InstallHint } from '@/features/pwa';
 import { ThemeToggle } from '@/features/theme-toggle';
@@ -40,6 +43,7 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldError, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
+import { PhoneInput } from '@/shared/ui/phone-input';
 import { BlockSkeleton } from '@/shared/ui/skeletons';
 
 const profileKey = ['profile'] as const;
@@ -80,6 +84,7 @@ function MoreSections() {
   const items: { to: string; label: string; icon: LucideIcon; show: boolean }[] = [
     { to: '/notifications', label: 'Уведомления', icon: Bell, show: true },
     { to: '/reports', label: 'Отчёты', icon: FileSpreadsheet, show: !hasRole(user, 'FOREMAN') },
+    { to: '/users', label: 'Пользователи', icon: Users, show: hasRole(user, 'ADMIN') },
     { to: '/storage', label: 'Хранилище', icon: HardDrive, show: hasRole(user, 'ADMIN') },
   ];
   return (
@@ -103,14 +108,20 @@ function MoreSections() {
 
 function ProfileForm({ profile }: { profile: ProfileDto }) {
   const qc = useQueryClient();
-  const form = useForm<ProfileUpdate>({ resolver: zodResolver(profileUpdateSchema) });
+  const form = useForm<ProfileUpdate, unknown, z.output<typeof profileUpdateSchema>>({
+    resolver: zodResolver(profileUpdateSchema),
+  });
   const { errors, isDirty } = form.formState;
   useEffect(() => {
-    form.reset({ fullName: profile.fullName, phone: profile.phone ?? '' });
+    form.reset({
+      fullName: profile.fullName,
+      email: profile.email ?? '',
+      phone: profile.phone ? formatPhone(profile.phone) : '',
+    });
   }, [profile, form]);
 
   const save = useMutation({
-    mutationFn: (body: ProfileUpdate) =>
+    mutationFn: (body: z.output<typeof profileUpdateSchema>) =>
       http<ProfileDto>('/auth/profile', { method: 'PATCH', body }),
     onSuccess: (p) => {
       qc.setQueryData(profileKey, p);
@@ -124,7 +135,9 @@ function ProfileForm({ profile }: { profile: ProfileDto }) {
     <Card>
       <CardHeader>
         <CardTitle>Личные данные</CardTitle>
-        <CardDescription>Логин и роль меняет администратор.</CardDescription>
+        <CardDescription>
+          Входить можно по логину, телефону или почте. Логин и роль меняет администратор.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" noValidate onSubmit={form.handleSubmit((b) => save.mutate(b))}>
@@ -133,9 +146,34 @@ function ProfileForm({ profile }: { profile: ProfileDto }) {
             <Input id="p-name" autoComplete="name" {...form.register('fullName')} />
             <FieldError errors={[errors.fullName]} />
           </Field>
-          <Field>
+          <Field data-invalid={!!errors.phone}>
             <FieldLabel htmlFor="p-phone">Телефон</FieldLabel>
-            <Input id="p-phone" type="tel" autoComplete="tel" {...form.register('phone')} />
+            <Controller
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <PhoneInput
+                  id="p-phone"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                />
+              )}
+            />
+            <FieldError errors={[errors.phone]} />
+          </Field>
+          <Field data-invalid={!!errors.email}>
+            <FieldLabel htmlFor="p-email">Почта</FieldLabel>
+            <Input
+              id="p-email"
+              type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoComplete="email"
+              placeholder="ivanov@mail.ru"
+              {...form.register('email')}
+            />
+            <FieldError errors={[errors.email]} />
           </Field>
           <Button type="submit" disabled={!isDirty || save.isPending}>
             Сохранить

@@ -26,6 +26,6 @@ export async function signIn(app: NestExpressApplication, role: Role) {
     data: { login, fullName: `Тест ${role}`, role, passwordHash: await hashPassword(password) },
   });
   const agent = request.agent(app.getHttpServer());
-  await agent.post('/api/auth/login').send({ login, password }).expect(200);
+  await agent.post('/api/auth/login').send({ method: 'login', value: login, password }).expect(200);
   return { agent, user };
 }

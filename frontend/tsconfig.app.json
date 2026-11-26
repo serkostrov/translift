@@ -22,5 +22,6 @@
       "@contracts": ["../backend/src/contracts/index.ts"]
     }
   },
-  "include": ["src", "../backend/src/contracts"]
+  "include": ["src", "../backend/src/contracts"],
+  "exclude": ["../backend/src/contracts/**/*.spec.ts"]
 }

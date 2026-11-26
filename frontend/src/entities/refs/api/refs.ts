@@ -12,6 +12,7 @@ import type {
   UserCreate,
   UserDto,
   UserUpdate,
+  UserWithPassword,
 } from '@contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '@/shared/api/http';
@@ -32,6 +33,20 @@ export const useBrigades = () =>
   useQuery({ queryKey: ['brigades'], queryFn: () => http<BrigadeDto[]>('/brigades') });
 export const useSaveBrigade = () =>
   useSave<Partial<BrigadeUpsert>, BrigadeDto>('brigades', '/brigades', ['users', 'objects']);
+
+/** Удалить совсем: только записи без истории, иначе сервер ответит 409 с причиной. */
+function useRemove(key: string, path: string, extraKeys: string[] = []) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => http<void>(`${path}/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      for (const k of [key, ...extraKeys]) qc.invalidateQueries({ queryKey: [k] });
+    },
+  });
+}
+
+export const useDeleteBrigade = () => useRemove('brigades', '/brigades', ['users']);
+export const useDeleteUser = () => useRemove('users', '/users', ['brigades']);
 
 export const useCustomers = () =>
   useQuery({ queryKey: ['customers'], queryFn: () => http<CustomerDto[]>('/customers') });
@@ -57,5 +72,22 @@ export const useUsers = (role?: Role) =>
     queryKey: ['users', role ?? 'all'],
     queryFn: () => http<UserDto[]>('/users', { query: { role } }),
   });
-export const useSaveUser = () =>
-  useSave<UserCreate | UserUpdate, UserDto>('users', '/users', ['brigades']);
+/** Новый сотрудник; в ответе — временный пароль, его показываем один раз. */
+export const useCreateUser = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UserCreate) => http<UserWithPassword>('/users', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+};
+export const useUpdateUser = () => useSave<UserUpdate, UserDto>('users', '/users', ['brigades']);
+
+/** Сброс пароля: система придумывает временный, сотрудник выходит на всех устройствах. */
+export const useResetPassword = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      http<UserWithPassword>(`/users/${id}/reset-password`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+};
