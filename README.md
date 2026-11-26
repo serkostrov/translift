@@ -6,6 +6,7 @@
 - План, стек и модель данных: [docs/PLAN.md](docs/PLAN.md)
 - Установка на сервер, резервные копии: [docs/DEPLOY.md](docs/DEPLOY.md)
 - Приёмка по ТЗ: [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)
+- Проверка на каждый push: [.github/workflows/ci.yml](.github/workflows/ci.yml) — линтер, типы, тесты, сборка образов
 
 ## Структура
 

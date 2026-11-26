@@ -39,6 +39,9 @@ model User {
   /// Пароль выдал администратор — при входе система попросит придумать свой
   mustChangePassword       Boolean   @default(false)
   lastLoginAt              DateTime? @db.Timestamptz
+  /// Неудачные входы подряд; после 10 вход блокируется на 15 минут
+  failedLogins             Int       @default(0)
+  lockedUntil              DateTime? @db.Timestamptz
   /// Сотрудник нажал «Забыли пароль?» и ждёт, когда администратор выдаст новый
   passwordResetRequestedAt DateTime? @db.Timestamptz
 

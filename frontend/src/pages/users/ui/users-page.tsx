@@ -11,7 +11,7 @@ import {
   userUpdateSchema,
 } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Copy, KeyRound, Plus, Search } from 'lucide-react';
+import { Copy, KeyRound, Plus, Search, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import {
   useDeleteUser,
   useDismissResetRequest,
   useResetPassword,
+  useUnlockUser,
   useUpdateUser,
   useUsers,
 } from '@/entities/refs';
@@ -234,6 +235,9 @@ function UserBadges({ user }: { user: UserDto }) {
   return (
     <>
       {!user.isActive && <Badge variant="outline">в архиве</Badge>}
+      {user.isActive && user.lockedUntil && (
+        <Badge className="bg-red-500/15 text-red-700 dark:text-red-400">вход заблокирован</Badge>
+      )}
       {user.isActive && user.resetRequestedAt && (
         <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400">просит пароль</Badge>
       )}
@@ -425,6 +429,7 @@ function EditUserDialog({
   const [confirmReset, setConfirmReset] = useState(false);
   const remove = useDeleteUser();
   const dismiss = useDismissResetRequest();
+  const unlock = useUnlockUser();
   const form = useForm<UserUpdate, unknown, z.output<typeof userUpdateSchema>>({
     resolver: zodResolver(userUpdateSchema),
     defaultValues: {
@@ -539,6 +544,26 @@ function EditUserDialog({
         <FieldDescription>
           Войти можно по логину, телефону или почте — любому из них.
         </FieldDescription>
+        {user.lockedUntil && (
+          <div className="rounded-lg border border-red-500/50 bg-red-500/5 p-3">
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+              <ShieldAlert className="size-4 text-red-600" />
+              Вход заблокирован до {formatDateTime(user.lockedUntil)}
+            </div>
+            <p className="mb-3 text-sm text-muted-foreground">
+              10 неверных паролей подряд. Если это сам сотрудник ошибся — снимите блокировку или
+              выдайте новый пароль. Если не он — пароль, возможно, подбирают.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={unlock.isPending}
+              onClick={() => act(unlock.mutateAsync(user.id), 'Блокировка снята')}
+            >
+              Снять блокировку
+            </Button>
+          </div>
+        )}
         <div
           className={cn(
             'rounded-lg border p-3',

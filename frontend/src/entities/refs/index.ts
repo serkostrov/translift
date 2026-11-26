@@ -12,6 +12,7 @@ export {
   useSaveCustomer,
   useSaveTemplateStage,
   useTemplates,
+  useUnlockUser,
   useUpdateUser,
   useUsers,
 } from './api/refs';

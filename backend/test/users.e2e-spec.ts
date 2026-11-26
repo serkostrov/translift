@@ -239,4 +239,32 @@ describe('Пользователи и восстановление пароля 
     // Старый пароль продолжает работать
     await foreman.agent.get('/api/auth/me').expect(200);
   });
+
+  it('10 неверных паролей подряд — вход заблокирован, администратор снимает блокировку', async () => {
+    const victim = await signIn(app, 'FOREMAN');
+    const second = await signIn(app, 'ADMIN');
+    const attempt = (password: string) =>
+      request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ method: 'login', value: victim.user.login, password });
+
+    for (let i = 0; i < 10; i++) await attempt('wrong-password').expect(401);
+    // Даже верный пароль не пускает, пока блокировка
+    const locked = await attempt('test-password-1').expect(429);
+    expect(locked.body.message).toMatch(/заблокирован/);
+
+    const users = (await second.agent.get('/api/users').expect(200)).body as UserDto[];
+    expect(users.find((u) => u.id === victim.user.id)?.lockedUntil).not.toBeNull();
+    const page = (await second.agent.get('/api/notifications').expect(200))
+      .body as NotificationsDto;
+    expect(
+      page.items.some((n) => n.text.includes(`(${victim.user.login})`) && n.link === '/users'),
+    ).toBe(true);
+
+    await second.agent.delete(`/api/users/${victim.user.id}/lock`).expect(204);
+    await attempt('test-password-1').expect(200);
+    // Удачный вход обнуляет счётчик: 9 ошибок снова не блокируют
+    for (let i = 0; i < 9; i++) await attempt('wrong-password').expect(401);
+    await attempt('test-password-1').expect(200);
+  });
 });

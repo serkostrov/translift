@@ -71,6 +71,8 @@ export type UserDto = {
   lastLoginAt: string | null;
   /** Когда сотрудник попросил сбросить пароль; null — не просил */
   resetRequestedAt: string | null;
+  /** Вход заблокирован после серии неверных паролей до этого момента; null — не заблокирован */
+  lockedUntil: string | null;
   /** Нет отметок, фото, комментариев и записей в журнале — можно удалить совсем */
   canDelete: boolean;
 };

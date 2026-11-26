@@ -8,6 +8,7 @@ import {
   type SessionUser,
   type StorageStatsDto,
 } from '../../contracts/index.js';
+import { MaintenanceService } from './maintenance.service.js';
 import { StorageService } from './storage.service.js';
 
 /** Заполненность хранилища и очистка старых фото. Только администратор. */
@@ -42,6 +43,6 @@ export class StorageController {
 
 @Module({
   controllers: [StorageController],
-  providers: [StorageService],
+  providers: [StorageService, MaintenanceService],
 })
 export class StorageModule {}

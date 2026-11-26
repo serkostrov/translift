@@ -48,6 +48,7 @@ const toDto = (u: UserRow): UserDto => ({
   mustChangePassword: u.mustChangePassword,
   lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
   resetRequestedAt: u.passwordResetRequestedAt?.toISOString() ?? null,
+  lockedUntil: u.lockedUntil && u.lockedUntil > new Date() ? u.lockedUntil.toISOString() : null,
   canDelete: Object.values(u._count).every((n) => n === 0),
 });
 
@@ -115,6 +116,8 @@ export class UsersController {
         passwordHash: await hashPassword(password),
         mustChangePassword: true,
         passwordResetRequestedAt: null,
+        failedLogins: 0,
+        lockedUntil: null,
       },
       include: userInclude,
     });
@@ -131,6 +134,14 @@ export class UsersController {
   @HttpCode(204)
   async dismissResetRequest(@Param('id', { schema: idSchema }) id: string) {
     await this.prisma.user.update({ where: { id }, data: { passwordResetRequestedAt: null } });
+  }
+
+  /** Снять блокировку входа после серии неверных паролей. */
+  @Roles('ADMIN')
+  @Delete(':id/lock')
+  @HttpCode(204)
+  async unlock(@Param('id', { schema: idSchema }) id: string) {
+    await this.prisma.user.update({ where: { id }, data: { failedLogins: 0, lockedUntil: null } });
   }
 
   @Roles('ADMIN')

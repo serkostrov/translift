@@ -92,6 +92,15 @@ export const useDismissResetRequest = () => {
   });
 };
 
+/** Снять блокировку входа после серии неверных паролей. */
+export const useUnlockUser = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => http<void>(`/users/${id}/lock`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+};
+
 export const useResetPassword = () => {
   const qc = useQueryClient();
   return useMutation({

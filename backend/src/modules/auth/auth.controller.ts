@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Patch,
   Post,
   Req,
@@ -45,6 +47,15 @@ import {
 const byIdentifier = ({ method, value }: { method: LoginMethod; value: string }) =>
   method === 'login' ? { login: value } : method === 'email' ? { email: value } : { phone: value };
 
+/** Сколько неверных паролей подряд — и на сколько минут блокируется вход. */
+export const LOCK_AFTER = 10;
+export const LOCK_MINUTES = 15;
+
+const lockedMessage = (until: Date) => {
+  const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60_000));
+  return `Слишком много неверных паролей. Вход заблокирован ещё на ${minutes} мин. Если срочно — попросите администратора снять блокировку.`;
+};
+
 /** Хеш для несуществующего логина: проверка идёт столько же, сколько для настоящего. */
 const DUMMY_HASH = await hashPassword('dummy-password-for-timing');
 
@@ -71,8 +82,13 @@ export class AuthController {
       where: byIdentifier(body),
       include: { ledBrigade: { select: { id: true } } },
     });
+    // Заблокирован после серии неудачных попыток — пароль даже не проверяем
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
+      throw new HttpException(lockedMessage(user.lockedUntil), HttpStatus.TOO_MANY_REQUESTS);
+    }
     const ok = await verifyPassword(body.password, user?.passwordHash ?? DUMMY_HASH);
-    if (!user || !ok || !user.isActive)
+    if (!user || !ok || !user.isActive) {
+      if (user && !ok) await this.registerFailure(user);
       throw new UnauthorizedException(
         body.method === 'login'
           ? 'Неверный логин или пароль'
@@ -80,6 +96,7 @@ export class AuthController {
             ? 'Неверная почта или пароль'
             : 'Неверный телефон или пароль',
       );
+    }
 
     const token = await this.sessions.create(user.id, req.headers['user-agent']);
     res.cookie(SESSION_COOKIE, token, {
@@ -89,8 +106,45 @@ export class AuthController {
       maxAge: SESSION_TTL_MS,
       path: '/',
     });
-    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null },
+    });
     return toSessionUser(user);
+  }
+
+  /**
+   * Неудачный вход. После LOCK_AFTER подряд — блокировка на LOCK_MINUTES и уведомление
+   * администраторам: так перебор пароля упирается в стену даже с разных адресов.
+   */
+  private async registerFailure(user: { id: string; login: string; fullName: string }) {
+    const { failedLogins } = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
+    });
+    if (failedLogins < LOCK_AFTER) return;
+    const lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', isActive: true, id: { not: user.id } },
+      select: { id: true },
+    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLogins: 0, lockedUntil },
+      }),
+      this.prisma.notification.createMany({
+        data: admins.map((a) => ({
+          userId: a.id,
+          level: 'DANGER' as const,
+          link: '/users',
+          topic: 'Безопасность',
+          text: `${user.fullName} (${user.login}): ${LOCK_AFTER} неверных паролей подряд, вход заблокирован на ${LOCK_MINUTES} минут. Если это не сотрудник — возможен подбор пароля.`,
+          dedupeKey: `lockout:${user.id}`,
+        })),
+      }),
+    ]);
   }
 
   /**
