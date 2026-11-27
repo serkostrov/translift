@@ -74,7 +74,8 @@ export function AppLayout() {
   return (
     // Оболочка ровно в высоту экрана: шапка и меню неподвижны, прокручивается только <main>
     <div className="flex h-dvh overflow-hidden bg-muted/30">
-      <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r bg-background md:flex">
+      {/* Меню всегда тёмное: класс dark включает внутри него токены тёмной темы */}
+      <aside className="dark hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-foreground md:flex">
         {/* Логотип ведёт на главную: сводка, у бригадира — его объекты */}
         <Link
           to="/"

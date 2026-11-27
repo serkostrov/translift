@@ -16,7 +16,7 @@ const stateDot = (l: LiftDetails) =>
         ? 'bg-amber-500'
         : l.state === 'NOT_STARTED'
           ? 'bg-muted-foreground/40'
-          : 'bg-primary';
+          : 'bg-progress';
 
 /** Переключатель «Все · Лифт 1 · Лифт 2…»: прокручивается внутри себя, страница — нет. */
 export function LiftSwitcher({
@@ -151,8 +151,8 @@ export function LiftMatrix({
                             <span
                               className={cn(
                                 'flex size-6 items-center justify-center rounded-sm border',
-                                done && 'border-primary bg-primary text-primary-foreground',
-                                next && 'border-2 border-primary',
+                                done && 'border-progress bg-progress text-white',
+                                next && 'border-2 border-progress',
                                 !done && !next && 'border-border',
                               )}
                             >
@@ -174,7 +174,7 @@ export function LiftMatrix({
                                   type="button"
                                   onClick={() => onMark(l.id, s.id)}
                                   aria-label={`Отметить «${s.shortName}» — ${liftLabel(l)}`}
-                                  className="mx-auto flex rounded-sm hover:bg-primary/10"
+                                  className="mx-auto flex rounded-sm hover:bg-progress/10"
                                 >
                                   {marker}
                                 </button>

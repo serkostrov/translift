@@ -257,7 +257,7 @@ function Cabin({
       <div
         className={cn(
           'absolute inset-x-0.5 h-3 rounded-[2px] transition-[bottom]',
-          done ? 'bg-emerald-500' : risk ? 'bg-red-500' : 'bg-primary',
+          done ? 'bg-emerald-500' : risk ? 'bg-red-500' : 'bg-progress',
         )}
         style={{ bottom: `calc(${percent / 100} * (100% - 14px) + 1px)` }}
       />

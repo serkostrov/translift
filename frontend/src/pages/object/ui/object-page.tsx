@@ -553,12 +553,12 @@ function StageRow({
 
   const head = (
     <>
-      {/* Маркер этапа: выполнен — залитый квадрат с галочкой, следующий — рамка цвета бренда */}
+      {/* Маркер этапа: выполнен — залитый квадрат с галочкой, следующий — рамка цвета прогресса */}
       <span
         className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-sm border text-xs font-medium tabular-nums text-muted-foreground',
-          done && 'border-primary bg-primary text-primary-foreground',
-          next && 'border-primary text-primary',
+          done && 'border-progress bg-progress text-white',
+          next && 'border-progress text-progress',
         )}
       >
         {done ? <CheckIcon weight="bold" className="size-3.5" /> : s.order}

@@ -44,7 +44,7 @@ type Progress = Pick<LiftSummary, 'currentStage' | 'stagesTotal' | 'percent' | '
 function Segments({ item, compact }: { item: Progress; compact?: boolean }) {
   const done = item.currentStage?.order ?? 0;
   const color =
-    item.state === 'DONE' ? 'bg-emerald-500' : item.isRisk ? 'bg-red-500' : 'bg-primary';
+    item.state === 'DONE' ? 'bg-emerald-500' : item.isRisk ? 'bg-red-500' : 'bg-progress';
   return (
     <div className="flex gap-px" role="img" aria-label={`Выполнено ${item.percent}%`}>
       {Array.from({ length: item.stagesTotal }, (_, i) => (

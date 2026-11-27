@@ -42,7 +42,7 @@ export function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="sr-only">Транслифт</CardTitle>
-          <CardDescription className="sr-only">Контроль монтажа лифтов</CardDescription>
+          <CardDescription className="sr-only">Монтаж лифтов</CardDescription>
           <Logo className="[&_svg]:size-11 [&_div:first-child]:text-lg" />
         </CardHeader>
         <CardContent>

@@ -29,7 +29,7 @@ export function Logo({ subtitle = true, className }: { subtitle?: boolean; class
       <LogoMark className="size-9 shrink-0" />
       <div className="leading-tight">
         <div className="font-semibold">Транслифт</div>
-        {subtitle && <div className="text-xs text-muted-foreground">Контроль монтажа лифтов</div>}
+        {subtitle && <div className="text-xs text-muted-foreground">Монтаж лифтов</div>}
       </div>
     </div>
   );

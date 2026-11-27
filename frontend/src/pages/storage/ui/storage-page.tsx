@@ -116,7 +116,7 @@ export function StoragePage() {
                 </span>
                 <div className="h-2 flex-1 rounded-full bg-muted">
                   <div
-                    className="h-2 rounded-full bg-primary"
+                    className="h-2 rounded-full bg-progress"
                     style={{ width: `${(m.bytes / maxMonth) * 100}%` }}
                   />
                 </div>
