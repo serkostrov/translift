@@ -76,7 +76,8 @@ export function ClaimCard({ id }: { id: string }) {
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+      {/* Сведения сверху, обсуждение под ними: растущая переписка не растягивает карточку */}
+      <div className="grid max-w-4xl gap-4">
         <Card>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">

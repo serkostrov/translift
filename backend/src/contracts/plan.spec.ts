@@ -1,4 +1,4 @@
-import { newLiftNames, planControlDates, planStages } from './objects.js';
+import { planControlDates, planLifts, planStages } from './objects.js';
 
 const stages = [
   { id: 'b', order: 2, plannedDays: 5, setsDate: 'PTO' as const },
@@ -27,13 +27,27 @@ describe('план этапов', () => {
   });
 });
 
-describe('newLiftNames', () => {
-  it('один лифт — название как есть', () => {
-    expect(newLiftNames('Грузовой', 1, ['Подъезд 1'])).toEqual(['Грузовой']);
+describe('planLifts', () => {
+  it('один лифт с названием — как есть', () => {
+    expect(planLifts('Грузовой', 1, [{ id: 'a', name: '' }])).toEqual({
+      names: ['Грузовой'],
+      renames: [],
+    });
   });
-  it('несколько — с номерами, продолжая занятые', () => {
-    expect(newLiftNames('Подъезд', 2, ['Подъезд 1'])).toEqual(['Подъезд 2', 'Подъезд 3']);
-    expect(newLiftNames('Подъезд', 2, ['Грузовой'])).toEqual(['Подъезд 1', 'Подъезд 2']);
-    expect(newLiftNames('П.', 1 + 1, ['П. 4'])).toEqual(['П. 5', 'П. 6']);
+  it('первый лифт подъезда без названия — без подписи', () => {
+    expect(planLifts('', 1, [])).toEqual({ names: [''], renames: [] });
+  });
+  it('без названия: нумерация, безымянный лифт подъезда становится «Лифт 1»', () => {
+    expect(planLifts('', 2, [{ id: 'a', name: '' }])).toEqual({
+      names: ['Лифт 2', 'Лифт 3'],
+      renames: [{ id: 'a', name: 'Лифт 1' }],
+    });
+    expect(planLifts('', 1, [{ id: 'a', name: 'Лифт 1' }]).names).toEqual(['Лифт 2']);
+  });
+  it('несколько с названием — с номерами, продолжая занятые', () => {
+    expect(planLifts('Грузовой', 2, [{ id: 'a', name: 'Грузовой 1' }]).names).toEqual([
+      'Грузовой 2',
+      'Грузовой 3',
+    ]);
   });
 });

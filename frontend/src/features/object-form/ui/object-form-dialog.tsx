@@ -1,4 +1,5 @@
 import {
+  MAX_LIFTS_AT_ONCE,
   type ObjectCreate,
   type ObjectDetails,
   objectCreateSchema,
@@ -64,6 +65,8 @@ const valuesOf = (object?: ObjectDetails): FormInput => {
     brigadeId: object?.brigade?.id ?? null,
     deadline: object?.deadline ?? null,
     plannedStartDate: lift?.plannedStartDate ?? null,
+    entrance: lift?.entrance ?? '',
+    liftCount: 1,
   };
 };
 
@@ -180,6 +183,30 @@ export function ObjectFormDialog({ object, trigger }: Props) {
               <FieldDescription>Так объект подписан в списках и у бригадира</FieldDescription>
               <FieldError errors={[errors.shortAddress]} />
             </Field>
+
+            {!object && (
+              <div className="grid grid-cols-[1fr_6rem] gap-3">
+                <Field>
+                  <FieldLabel htmlFor="entrance">Подъезд</FieldLabel>
+                  <Input id="entrance" placeholder="Подъезд 1" {...form.register('entrance')} />
+                </Field>
+                <Field data-invalid={!!errors.liftCount}>
+                  <FieldLabel htmlFor="liftCount">Лифтов</FieldLabel>
+                  <Input
+                    id="liftCount"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_LIFTS_AT_ONCE}
+                    {...form.register('liftCount')}
+                  />
+                </Field>
+                <FieldDescription className="col-span-2 -mt-1">
+                  Один лифт — можно не заполнять. Несколько в подъезде — будут «Лифт 1, 2…»; другие
+                  подъезды добавите кнопкой «+ Лифт» на странице объекта.
+                </FieldDescription>
+              </div>
+            )}
 
             {singleLift && (
               <>

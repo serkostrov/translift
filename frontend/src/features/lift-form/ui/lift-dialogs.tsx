@@ -4,18 +4,20 @@ import {
   liftCreateSchema,
   liftLabel,
   MAX_LIFTS_AT_ONCE,
-  newLiftNames,
   type ObjectDetails,
+  planLifts,
   WORK_TYPE_LABELS,
   WORK_TYPES,
 } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { useAddLifts, useUpdateLift } from '@/entities/object';
 import { useBrigades } from '@/entities/refs';
 import { errorMessage } from '@/shared/api/http';
+import { Button } from '@/shared/ui/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
@@ -50,22 +52,95 @@ function BrigadeSelect({
   );
 }
 
+/** Подъезды объекта по порядку и следующий свободный номер: «Подъезд 3». */
+function entrancesOf(object: ObjectDetails, extra?: string) {
+  const list = [...new Set([...object.lifts.map((l) => l.entrance), extra ?? ''])]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'ru', { numeric: true }));
+  const numbers = list.map((e) => Number(/(\d+)\s*$/.exec(e)?.[1] ?? 0));
+  return { list, next: `Подъезд ${Math.max(0, ...numbers) + 1}` };
+}
+
+/** Подъезд: выбрать из уже заведённых или ввести новый. */
+function EntrancePicker({
+  id,
+  value,
+  onChange,
+  entrances,
+  next,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  entrances: string[];
+  /** Что подставить в новый подъезд */
+  next: string;
+}) {
+  const [creating, setCreating] = useState(
+    entrances.length === 0 || (!!value && !entrances.includes(value)),
+  );
+  if (creating) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Подъезд 1"
+          autoFocus={entrances.length > 0}
+        />
+        {entrances.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setCreating(false);
+              onChange(entrances[0]);
+            }}
+          >
+            Из списка
+          </Button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <SimpleSelect
+      id={id}
+      value={value || null}
+      onChange={(v) => onChange(v ?? '')}
+      placeholder="Выберите подъезд"
+      options={entrances.map((e) => ({ value: e, label: e }))}
+      onCreate={() => {
+        setCreating(true);
+        onChange(next);
+      }}
+      createLabel="Новый подъезд"
+    />
+  );
+}
+
 type AddInput = z.input<typeof liftCreateSchema>;
 
 /**
- * Добавить лифт в объект. Можно сразу несколько одинаковых: «Подъезд» ×3 → «Подъезд 1…3».
- * Если в объекте пока один лифт без названия — спрашиваем название и для него.
+ * Добавить лифты в подъезд — уже заведённый или новый. Без названия несколько лифтов
+ * подъезда нумеруются «Лифт 1, 2…»; лифт без подъезда сначала получает подъезд.
  */
 export function AddLiftDialog({ object, onClose }: { object: ObjectDetails; onClose: () => void }) {
   const add = useAddLifts(object.id);
-  const unnamed = object.lifts.find((l) => !l.name);
+  // Лифт без подъезда и названия (объект создавали с одним лифтом): спросим его подъезд
+  const unlabeled = object.lifts.find((l) => !l.entrance && !l.name);
   const [first] = object.lifts;
-  const schema = unnamed
-    ? liftCreateSchema.extend({ existingName: z.string().trim().min(1, 'Дайте название') })
+  const schema = unlabeled
+    ? liftCreateSchema.extend({
+        existingEntrance: z.string().trim().min(1, 'Укажите подъезд'),
+      })
     : liftCreateSchema;
+  const initial = entrancesOf(object, unlabeled ? 'Подъезд 1' : undefined);
   const form = useForm<AddInput, unknown, LiftCreate>({
     resolver: zodResolver(schema),
     defaultValues: {
+      entrance: initial.next,
       name: '',
       count: 1,
       workType: first.workType,
@@ -73,17 +148,23 @@ export function AddLiftDialog({ object, onClose }: { object: ObjectDetails; onCl
       capacityKg: first.capacityKg,
       plannedStartDate: first.plannedStartDate,
       brigadeId: null,
-      existingName: unnamed ? 'Лифт 1' : undefined,
+      existingEntrance: unlabeled ? 'Подъезд 1' : undefined,
     },
   });
   const { errors } = form.formState;
-  const count = Number(form.watch('count')) || 1;
-  const name = form.watch('name').trim();
-  const existingName = form.watch('existingName');
-  const preview = newLiftNames(
-    name,
-    Math.min(count, MAX_LIFTS_AT_ONCE),
-    object.lifts.map((l) => l.name || existingName || ''),
+  const count = Math.min(Number(form.watch('count')) || 1, MAX_LIFTS_AT_ONCE);
+  const name = (form.watch('name') ?? '').trim();
+  const entrance = (form.watch('entrance') ?? '').trim();
+  const existingEntrance = form.watch('existingEntrance') ?? '';
+  const { list: entrances, next } = entrancesOf(object, existingEntrance);
+  // Как будут подписаны лифты — та же логика, что на сервере
+  const inEntrance = object.lifts
+    .map((l) => ({ ...l, entrance: l.entrance || (!l.name ? existingEntrance : '') }))
+    .filter((l) => l.entrance === entrance);
+  const plan = planLifts(name, count, inEntrance);
+  const label = (n: string) => liftLabel({ entrance, name: n, position: 0 });
+  const renamed = plan.renames.map(
+    (r) => `${label(inEntrance.find((l) => l.id === r.id)?.name ?? '')} → ${label(r.name)}`,
   );
 
   const onSubmit = form.handleSubmit(async (body) => {
@@ -106,20 +187,34 @@ export function AddLiftDialog({ object, onClose }: { object: ObjectDetails; onCl
       submitting={add.isPending}
       submitLabel={count > 1 ? `Добавить ${count}` : 'Добавить'}
     >
-      {unnamed && (
-        <Field data-invalid={!!errors.existingName}>
-          <FieldLabel htmlFor="existingName">Название лифта, который уже есть</FieldLabel>
-          <Input id="existingName" {...form.register('existingName')} />
-          <FieldDescription>
-            Когда лифтов несколько, у каждого своё название: «Подъезд 1», «Грузовой».
-          </FieldDescription>
-          <FieldError errors={[errors.existingName]} />
+      {unlabeled && (
+        <Field data-invalid={!!errors.existingEntrance}>
+          <FieldLabel htmlFor="existingEntrance">Подъезд лифта, который уже есть</FieldLabel>
+          <Input id="existingEntrance" {...form.register('existingEntrance')} />
+          <FieldError errors={[errors.existingEntrance]} />
         </Field>
       )}
+      <Field data-invalid={!!errors.entrance}>
+        <FieldLabel htmlFor="lift-entrance">Подъезд</FieldLabel>
+        <Controller
+          control={form.control}
+          name="entrance"
+          render={({ field }) => (
+            <EntrancePicker
+              id="lift-entrance"
+              value={field.value}
+              onChange={field.onChange}
+              entrances={entrances}
+              next={next}
+            />
+          )}
+        />
+        <FieldError errors={[errors.entrance]} />
+      </Field>
       <div className="grid grid-cols-[1fr_6rem] gap-3">
         <Field data-invalid={!!errors.name}>
-          <FieldLabel htmlFor="lift-name">Название нового</FieldLabel>
-          <Input id="lift-name" placeholder="Подъезд 2, грузовой" {...form.register('name')} />
+          <FieldLabel htmlFor="lift-name">Название (необязательно)</FieldLabel>
+          <Input id="lift-name" placeholder="Грузовой" {...form.register('name')} />
           <FieldError errors={[errors.name]} />
         </Field>
         <Field data-invalid={!!errors.count}>
@@ -134,12 +229,13 @@ export function AddLiftDialog({ object, onClose }: { object: ObjectDetails; onCl
           />
         </Field>
       </div>
-      {count > 1 && name && (
+      {entrance && (
         <FieldDescription className="-mt-2">
-          Будут названы:{' '}
-          {preview.length > 3
-            ? `${preview[0]}, ${preview[1]}, … ${preview.at(-1)}`
-            : preview.join(', ')}
+          Будут:{' '}
+          {plan.names.length > 3
+            ? `${label(plan.names[0])}; ${label(plan.names[1])}; … ${label(plan.names.at(-1) ?? '')}`
+            : plan.names.map(label).join('; ')}
+          {renamed.length > 0 && `. Уже есть: ${renamed.join('; ')}`}
         </FieldDescription>
       )}
       <Field>
@@ -180,6 +276,7 @@ export function AddLiftDialog({ object, onClose }: { object: ObjectDetails; onCl
 }
 
 const editSchema = z.object({
+  entrance: z.string().trim().max(100),
   name: z.string().trim().max(100),
   floors: liftCreateSchema.shape.floors,
   capacityKg: liftCreateSchema.shape.capacityKg,
@@ -190,7 +287,7 @@ const editSchema = z.object({
 type EditInput = z.input<typeof editSchema>;
 type EditOutput = z.output<typeof editSchema>;
 
-/** Характеристики, название и бригада одного лифта. */
+/** Подъезд, название, характеристики и бригада одного лифта. */
 export function EditLiftDialog({
   object,
   lift,
@@ -202,11 +299,18 @@ export function EditLiftDialog({
 }) {
   const update = useUpdateLift(object.id);
   const multi = object.lifts.length > 1;
+  const { list: entrances, next } = entrancesOf(object);
   const form = useForm<EditInput, unknown, EditOutput>({
     resolver: zodResolver(
-      multi ? editSchema.extend({ name: z.string().trim().min(1, 'Нужно название') }) : editSchema,
+      multi
+        ? editSchema.refine((v) => v.entrance || v.name, {
+            path: ['entrance'],
+            message: 'Укажите подъезд или название',
+          })
+        : editSchema,
     ),
     defaultValues: {
+      entrance: lift.entrance,
       name: lift.name,
       floors: lift.floors,
       capacityKg: lift.capacityKg,
@@ -236,13 +340,29 @@ export function EditLiftDialog({
       onSubmit={onSubmit}
       submitting={update.isPending}
     >
-      {multi && (
-        <Field data-invalid={!!errors.name}>
-          <FieldLabel htmlFor="lift-name">Название</FieldLabel>
-          <Input id="lift-name" {...form.register('name')} />
-          <FieldError errors={[errors.name]} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field data-invalid={!!errors.entrance}>
+          <FieldLabel htmlFor="lift-entrance">Подъезд</FieldLabel>
+          <Controller
+            control={form.control}
+            name="entrance"
+            render={({ field }) => (
+              <EntrancePicker
+                id="lift-entrance"
+                value={field.value}
+                onChange={field.onChange}
+                entrances={entrances}
+                next={next}
+              />
+            )}
+          />
+          <FieldError errors={[errors.entrance]} />
         </Field>
-      )}
+        <Field>
+          <FieldLabel htmlFor="lift-name">Название</FieldLabel>
+          <Input id="lift-name" placeholder="Грузовой" {...form.register('name')} />
+        </Field>
+      </div>
       <LiftFields form={form} errors={errors} withInfo />
       <Field>
         <FieldLabel htmlFor="lift-brigade">Бригада</FieldLabel>

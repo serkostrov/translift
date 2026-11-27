@@ -160,47 +160,163 @@ export const financeUpdateSchema = z.object({
   contractNumber: optionalText(200),
   contractDate: dateSchema.nullable().optional(),
   contractAmount: money,
-  equipmentCost: money,
-  customerPrice: money,
   closedWorksAmount: money,
-  paidAmount: money,
 });
 export type FinanceUpdate = z.input<typeof financeUpdateSchema>;
+
+export const FINANCE_ENTRY_TYPES = ['PAYMENT', 'AGREEMENT', 'EXPENSE'] as const;
+export type FinanceEntryType = (typeof FINANCE_ENTRY_TYPES)[number];
+export const FINANCE_ENTRY_LABELS: Record<FinanceEntryType, string> = {
+  PAYMENT: 'Платёж',
+  AGREEMENT: 'Доп. соглашение',
+  EXPENSE: 'Расход',
+};
+
+export const EXPENSE_KINDS = ['EQUIPMENT', 'WORKS', 'OTHER'] as const;
+export type ExpenseKind = (typeof EXPENSE_KINDS)[number];
+export const EXPENSE_KIND_LABELS: Record<ExpenseKind, string> = {
+  EQUIPMENT: 'Оборудование',
+  WORKS: 'Работы',
+  OTHER: 'Прочее',
+};
+
+const amount = z.coerce
+  .number()
+  .min(-1e12)
+  .max(1e12)
+  .transform((v) => Math.round(v * 100) / 100);
+
+/** Платёж, доп. соглашение или расход. */
+export const financeEntryCreateSchema = z
+  .object({
+    type: z.enum(FINANCE_ENTRY_TYPES),
+    /** Статья — только у расхода */
+    kind: z.enum(EXPENSE_KINDS).nullable().optional(),
+    title: requiredText(300),
+    amount,
+    date: dateSchema,
+  })
+  .refine((e) => e.type !== 'EXPENSE' || e.kind, {
+    path: ['kind'],
+    message: 'Выберите статью расхода',
+  })
+  .refine((e) => (e.type === 'AGREEMENT' ? e.amount !== 0 : e.amount > 0), {
+    path: ['amount'],
+    message: 'Укажите сумму',
+  });
+export type FinanceEntryCreate = z.input<typeof financeEntryCreateSchema>;
+
+export type FinanceEntryDto = {
+  id: string;
+  type: FinanceEntryType;
+  kind: ExpenseKind | null;
+  title: string;
+  amount: number;
+  date: string;
+  author: string | null;
+  createdAt: string;
+};
+
+/** Пояснения к полям финансов — показываются по значку «?» рядом с полем. */
+export const FINANCE_HINTS = {
+  contract:
+    'Договор, по которому заказчик платит за этот объект. Берётся из «Сведений»; меняйте, только если по деньгам действует другой договор.',
+  contractAmount: 'Сколько заказчик платит за объект по основному договору — без доп. соглашений.',
+  agreements:
+    'Доп. соглашения меняют сумму, которую заплатит заказчик: дополнительные работы — плюс, исключённые — минус.',
+  total: 'Сумма для заказчика: договор + доп. соглашения. Столько мы получим в качестве оплат.',
+  closedWorksAmount:
+    'Сколько работ уже сдано заказчику по актам (КС-2, КС-3). Столько можно требовать к оплате сейчас.',
+  payments: 'Деньги, которые заказчик перечислил по объекту. Каждый платёж — отдельной строкой.',
+  debt: 'Сколько заказчик ещё должен: сумма для заказчика − полученные платежи.',
+  expenses:
+    'Наши затраты на объект: оборудование, оплата работ бригаде и подрядчикам, доставка, материалы и прочее.',
+  profit:
+    'Доходность: сумма для заказчика − все расходы. Меньше нуля — объект в минусе, руководителям придёт уведомление.',
+} as const;
 
 /** Договор, к которому объект привязан в «Сведениях» (справочник договоров). */
 export type FinanceObjectContract = { number: string; date: string | null; customer: string };
 
 export type FinanceDto = {
   /**
-   * Номер и дата договора в финансах. Пусто — действует договор объекта (objectContract).
-   * Заполняют, только если по деньгам договор другой (например, отдельный договор на лифт).
+   * Свои номер и дата договора в финансах. Пусто — действует договор объекта (objectContract).
    * TODO(заказчик): бывает ли у объекта отдельный договор по финансам или он всегда тот же.
    */
   contractNumber: string | null;
   contractDate: string | null;
+  /** Сумма по основному договору */
   contractAmount: number | null;
-  equipmentCost: number | null;
-  customerPrice: number | null;
   closedWorksAmount: number | null;
-  paidAmount: number | null;
-  /** Остаток задолженности — вычисляется, см. debtOf() */
+  /** Сумма доп. соглашений (может быть отрицательной) */
+  agreementsTotal: number;
+  /** Сумма для заказчика: договор + доп. соглашения; null, пока ничего не указано */
+  totalAmount: number | null;
+  /** Получено платежей */
+  paidAmount: number;
+  /** Остаток задолженности — см. debtOf() */
   debt: number | null;
+  expensesTotal: number;
+  expensesByKind: Record<ExpenseKind, number>;
+  /** Сумма для заказчика − расходы */
+  profit: number | null;
+  /** Доходность в процентах от суммы для заказчика */
+  margin: number | null;
+  entries: FinanceEntryDto[];
   updatedAt: string | null;
   objectContract: FinanceObjectContract | null;
 };
 
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/** Сводка денег объекта из основного договора и журнала (платежи, доп. соглашения, расходы). */
+export function summarizeFinance(
+  base: { contractAmount: number | null },
+  entries: Pick<FinanceEntryDto, 'type' | 'kind' | 'amount'>[],
+) {
+  const sum = (type: FinanceEntryType) =>
+    round2(entries.filter((e) => e.type === type).reduce((s, e) => s + e.amount, 0));
+  const agreementsTotal = sum('AGREEMENT');
+  const hasAgreements = entries.some((e) => e.type === 'AGREEMENT');
+  const totalAmount =
+    base.contractAmount === null && !hasAgreements
+      ? null
+      : round2((base.contractAmount ?? 0) + agreementsTotal);
+  const paidAmount = sum('PAYMENT');
+  const expensesTotal = sum('EXPENSE');
+  const expensesByKind = Object.fromEntries(
+    EXPENSE_KINDS.map((k) => [
+      k,
+      round2(
+        entries
+          .filter((e) => e.type === 'EXPENSE' && e.kind === k)
+          .reduce((s, e) => s + e.amount, 0),
+      ),
+    ]),
+  ) as Record<ExpenseKind, number>;
+  const profit = totalAmount === null ? null : round2(totalAmount - expensesTotal);
+  return {
+    agreementsTotal,
+    totalAmount,
+    paidAmount,
+    debt: debtOf({ totalAmount, paidAmount }),
+    expensesTotal,
+    expensesByKind,
+    profit,
+    margin:
+      profit !== null && totalAmount && totalAmount > 0
+        ? Math.round((profit / totalAmount) * 1000) / 10
+        : null,
+  };
+}
+
 /**
- * Остаток задолженности заказчика.
- * TODO(заказчик): формула. Сейчас: (стоимость для заказчика, иначе сумма договора) − оплата.
+ * Остаток задолженности заказчика: сумма для заказчика − платежи.
+ * TODO(заказчик): подтвердить формулу.
  */
-export function debtOf(f: {
-  contractAmount: number | null;
-  customerPrice: number | null;
-  paidAmount: number | null;
-}): number | null {
-  const total = f.customerPrice ?? f.contractAmount;
-  if (total === null) return null;
-  return Math.round((total - (f.paidAmount ?? 0)) * 100) / 100;
+export function debtOf(f: { totalAmount: number | null; paidAmount: number }): number | null {
+  if (f.totalAmount === null) return null;
+  return round2(f.totalAmount - f.paidAmount);
 }
 
 // ---------- Хранилище ----------

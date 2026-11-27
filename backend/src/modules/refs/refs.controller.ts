@@ -38,7 +38,7 @@ import {
   templateStageUpdateSchema,
 } from '../../contracts/index.js';
 import type { Prisma } from '../../generated/prisma/client.js';
-import { toFinanceDto } from '../finance/finance.controller.js';
+import { financeOfObjects } from '../finance/finance.controller.js';
 import { ObjectsService } from '../objects/objects.service.js';
 
 /** Объект «в работе» — не сдан и не в архиве. */
@@ -146,21 +146,27 @@ export class BrigadesController {
 
 /** Деньги по объектам: суммы полей «Финансов». */
 async function moneyOf(prisma: PrismaService, objectIds: string[]): Promise<MoneySummary> {
-  const rows = await prisma.objectFinance.findMany({ where: { objectId: { in: objectIds } } });
+  const finances = [...(await financeOfObjects(prisma, objectIds)).values()];
   const sum: MoneySummary = {
-    withFinance: rows.length,
+    withFinance: finances.length,
     contractAmount: 0,
-    customerPrice: 0,
+    totalAmount: 0,
     closedWorksAmount: 0,
     paidAmount: 0,
     debt: 0,
+    expenses: 0,
+    profit: 0,
+    negative: 0,
   };
-  for (const f of rows.map((r) => toFinanceDto(r))) {
+  for (const f of finances) {
     sum.contractAmount += f.contractAmount ?? 0;
-    sum.customerPrice += f.customerPrice ?? 0;
+    sum.totalAmount += f.totalAmount ?? 0;
     sum.closedWorksAmount += f.closedWorksAmount ?? 0;
-    sum.paidAmount += f.paidAmount ?? 0;
+    sum.paidAmount += f.paidAmount;
     sum.debt += f.debt ?? 0;
+    sum.expenses += f.expensesTotal;
+    sum.profit += f.profit ?? 0;
+    if (f.profit !== null && f.profit < 0) sum.negative++;
   }
   for (const k of Object.keys(sum) as (keyof MoneySummary)[]) {
     sum[k] = Math.round(sum[k] * 100) / 100;

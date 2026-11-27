@@ -1,4 +1,4 @@
-import type { MoneySummary, ObjectListItem } from '@contracts';
+import { FINANCE_HINTS, type MoneySummary, type ObjectListItem } from '@contracts';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ObjectStateBadge, StageSegments } from '@/entities/object';
@@ -7,18 +7,20 @@ import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { DataList } from '@/shared/ui/data-list';
+import { Hint } from '@/shared/ui/hint';
 
 export const rub = (v: number) => `${v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽`;
 
 /** Деньги по группе объектов. null — у пользователя нет доступа к финансам: блок не показываем. */
 export function MoneyCard({ money, total }: { money: MoneySummary | null; total: number }) {
   if (!money) return null;
-  const items: [string, number][] = [
-    ['Сумма договоров', money.contractAmount],
-    ['Стоимость для заказчика', money.customerPrice],
-    ['Закрыто работ', money.closedWorksAmount],
-    ['Поступило оплаты', money.paidAmount],
+  const items: [string, number, string][] = [
+    ['Сумма для заказчиков', money.totalAmount, FINANCE_HINTS.total],
+    ['Получено платежей', money.paidAmount, FINANCE_HINTS.payments],
+    ['Остаток задолженности', money.debt, FINANCE_HINTS.debt],
+    ['Расходы', money.expenses, FINANCE_HINTS.expenses],
   ];
+  const negative = money.profit < 0;
   return (
     <Card>
       <CardHeader>
@@ -31,16 +33,32 @@ export function MoneyCard({ money, total }: { money: MoneySummary | null; total:
         <div
           className={cn(
             'rounded-lg border p-4',
-            money.debt > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'bg-muted/40',
+            negative || money.negative > 0 ? 'border-red-500/40 bg-red-500/5' : 'bg-muted/40',
           )}
         >
-          <div className="text-sm text-muted-foreground">Остаток задолженности</div>
-          <div className="text-2xl font-semibold tabular-nums">{rub(money.debt)}</div>
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            Доходность
+            <Hint>{FINANCE_HINTS.profit}</Hint>
+          </div>
+          <div
+            className={cn(
+              'text-2xl font-semibold tabular-nums',
+              negative ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400',
+            )}
+          >
+            {rub(money.profit)}
+          </div>
+          {money.negative > 0 && (
+            <div className="text-sm text-destructive">В минусе объектов: {money.negative}</div>
+          )}
         </div>
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {items.map(([label, v]) => (
+          {items.map(([label, v, hint]) => (
             <div key={label} className="min-w-0 rounded-lg border p-3">
-              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dt className="flex items-center gap-1 text-xs text-muted-foreground">
+                {label}
+                <Hint>{hint}</Hint>
+              </dt>
               <dd className="font-medium tabular-nums">{rub(v)}</dd>
             </div>
           ))}

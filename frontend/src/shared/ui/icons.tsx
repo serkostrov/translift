@@ -54,6 +54,7 @@ export {
   PaperclipIcon as Paperclip,
   PencilSimpleIcon as Pencil,
   PlusIcon as Plus,
+  QuestionIcon as HelpCircle,
   ShieldWarningIcon as ShieldAlert,
   SignOutIcon as LogOut,
   SquaresFourIcon as LayoutDashboard,

@@ -22,7 +22,7 @@ import {
   type summaryReportQuerySchema,
   WORK_TYPE_LABELS,
 } from '../../contracts/index.js';
-import { toFinanceDto } from '../finance/finance.controller.js';
+import { financeOfObjects, toFinanceDto } from '../finance/finance.controller.js';
 import { ObjectsService } from '../objects/objects.service.js';
 import {
   boxRows,
@@ -95,6 +95,7 @@ export class ReportsService {
       orderBy: [
         { object: { deadline: 'asc' } },
         { object: { address: 'asc' } },
+        { entrance: 'asc' },
         { position: 'asc' },
       ],
       include: {
@@ -179,7 +180,7 @@ export class ReportsService {
       const row = ws.getRow(r);
       row.values = [
         i + 1,
-        o.name ? `${o.object.address}, ${o.name}` : o.object.address,
+        o.entrance || o.name ? `${o.object.address}, ${liftLabel(o)}` : o.object.address,
         o.floors,
         o.capacityKg ? `${o.capacityKg} кг` : null,
         cellDate(toDateString(o.object.deadline)),
@@ -238,7 +239,7 @@ export class ReportsService {
         include: { author: { select: { fullName: true } }, _count: { select: { photos: true } } },
       }),
       this.prisma.claim.findMany({ where: { objectId: id }, orderBy: { number: 'asc' } }),
-      showFinance ? this.prisma.objectFinance.findUnique({ where: { objectId: id } }) : null,
+      showFinance ? financeOfObjects(this.prisma, [id]) : null,
     ]);
     const fromAt = startOfDayIn(from, this.tz);
     const toAt = endOfDayIn(to, this.tz);
@@ -398,19 +399,24 @@ export class ReportsService {
 
     // Финансы
     if (showFinance) {
-      const f = toFinanceDto(finance);
+      const f = finance?.get(id) ?? toFinanceDto(null);
       ws.getCell(r, 1).value = 'Договор и финансы';
       ws.getCell(r, 1).font = { bold: true, size: 12 };
       r++;
       const rows: [string, number | string | null][] = [
         // Свой номер в финансах не указан — действует договор объекта
         ['Номер договора', f.contractNumber ?? obj.contract?.number ?? null],
-        ['Сумма договора', f.contractAmount],
-        ['Стоимость оборудования от завода', f.equipmentCost],
-        ['Стоимость для заказчика', f.customerPrice],
+        ['Сумма по договору', f.contractAmount],
+        ['Доп. соглашения', f.agreementsTotal],
+        ['Сумма для заказчика', f.totalAmount],
         ['Сумма закрытых работ', f.closedWorksAmount],
-        ['Поступившая оплата', f.paidAmount],
+        ['Получено платежей', f.paidAmount],
         ['Остаток задолженности', f.debt],
+        ['Расходы: оборудование', f.expensesByKind.EQUIPMENT],
+        ['Расходы: работы', f.expensesByKind.WORKS],
+        ['Расходы: прочее', f.expensesByKind.OTHER],
+        ['Расходы всего', f.expensesTotal],
+        ['Доходность', f.profit],
       ];
       const finFrom = r;
       for (const [k, v] of rows) {
@@ -418,7 +424,8 @@ export class ReportsService {
         ws.getCell(r, 3).value = v;
         ws.mergeCells(r, 3, r, 4);
         if (typeof v === 'number') ws.getCell(r, 3).numFmt = MONEY_FMT;
-        if (k === 'Остаток задолженности') ws.getRow(r).font = { bold: true };
+        if (k === 'Остаток задолженности' || k === 'Доходность') ws.getRow(r).font = { bold: true };
+        if (k === 'Доходность' && typeof v === 'number' && v < 0) ws.getCell(r, 3).fill = RISK_FILL;
         r++;
       }
       boxRows(ws, finFrom, r - 1, 4);
@@ -481,7 +488,7 @@ export class ReportsService {
         },
         _count: { _all: true },
       }),
-      this.prisma.objectFinance.findMany({ where: { objectId: { in: ids } } }),
+      financeOfObjects(this.prisma, ids),
       this.prisma.claim.groupBy({
         by: ['objectId'],
         where: { objectId: { in: ids }, status: { in: ['NEW', 'IN_REVIEW', 'ACCEPTED'] } },
@@ -490,7 +497,7 @@ export class ReportsService {
     ]);
     const marksBy = new Map(periodMarks.map((m) => [m.objectId, m._count._all]));
     const claimsBy = new Map(claims.map((c) => [c.objectId, c._count._all]));
-    const finBy = new Map(finances.map((f) => [f.objectId, toFinanceDto(f)]));
+    const finBy = finances;
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Сводный отчёт', {
@@ -517,9 +524,11 @@ export class ReportsService {
       ['Последняя отметка', 12],
       ['Требует внимания', 26],
       ['Открытые рекламации', 11],
-      ['Стоимость для заказчика', 16],
+      ['Сумма для заказчика', 16],
       ['Оплачено', 16],
       ['Остаток задолженности', 16],
+      ['Расходы', 16],
+      ['Доходность', 16],
     ];
     ws.columns = columns.map(([, width]) => ({ width }));
     ws.mergeCells(1, 1, 1, columns.length);
@@ -535,13 +544,15 @@ export class ReportsService {
     head.height = 45;
 
     let r = 5;
-    const totals = { price: 0, paid: 0, debt: 0 };
+    const totals = { price: 0, paid: 0, debt: 0, expenses: 0, profit: 0 };
     items.forEach((o, i) => {
       const f = finBy.get(o.id);
-      const price = f?.customerPrice ?? f?.contractAmount ?? null;
+      const price = f?.totalAmount ?? null;
       totals.price += price ?? 0;
       totals.paid += f?.paidAmount ?? 0;
       totals.debt += f?.debt ?? 0;
+      totals.expenses += f?.expensesTotal ?? 0;
+      totals.profit += f?.profit ?? 0;
       const row = ws.getRow(r);
       row.values = [
         i + 1,
@@ -568,11 +579,16 @@ export class ReportsService {
         price,
         f?.paidAmount ?? null,
         f?.debt ?? null,
+        f?.expensesTotal ?? null,
+        f?.profit ?? null,
       ];
       row.getCell(6).numFmt = DATE_FMT;
       row.getCell(12).numFmt = DATE_FMT;
       row.getCell(8).alignment = { wrapText: true, vertical: 'top' };
-      for (const c of [15, 16, 17]) row.getCell(c).numFmt = MONEY_FMT;
+      for (const c of [15, 16, 17, 18, 19]) row.getCell(c).numFmt = MONEY_FMT;
+      if (f?.profit !== null && f?.profit !== undefined && f.profit < 0) {
+        row.getCell(19).fill = RISK_FILL;
+      }
       if (o.isRisk && o.state !== 'DONE') {
         row.getCell(13).fill = RISK_FILL;
       }
@@ -585,7 +601,9 @@ export class ReportsService {
     total.getCell(15).value = totals.price;
     total.getCell(16).value = totals.paid;
     total.getCell(17).value = totals.debt;
-    for (const c of [15, 16, 17]) total.getCell(c).numFmt = MONEY_FMT;
+    total.getCell(18).value = totals.expenses;
+    total.getCell(19).value = totals.profit;
+    for (const c of [15, 16, 17, 18, 19]) total.getCell(c).numFmt = MONEY_FMT;
     total.font = { bold: true };
     ws.views = [{ state: 'frozen', ySplit: 4, xSplit: 2 }];
     ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: columns.length } };

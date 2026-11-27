@@ -10,11 +10,18 @@ export type MoneySummary = {
   /** Сколько объектов с заполненными финансами из всех */
   withFinance: number;
   contractAmount: number;
-  customerPrice: number;
   closedWorksAmount: number;
   paidAmount: number;
   /** Сумма остатков задолженности по объектам (формула — debtOf) */
   debt: number;
+  /** Сумма для заказчиков с доп. соглашениями */
+  totalAmount: number;
+  /** Расходы по всем объектам */
+  expenses: number;
+  /** Сумма для заказчиков − расходы по объектам, где сумма указана */
+  profit: number;
+  /** Сколько объектов в минусе */
+  negative: number;
 };
 
 export type ContractDetails = ContractDto & {

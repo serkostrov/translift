@@ -1,10 +1,11 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import ExcelJS from 'exceljs';
-import type {
-  MarkDto,
-  ObjectDetails,
-  ObjectListItem,
-  StageTemplateDto,
+import {
+  liftLabel,
+  type MarkDto,
+  type ObjectDetails,
+  type ObjectListItem,
+  type StageTemplateDto,
 } from '../src/contracts/index.js';
 import { createTestApp, signIn } from './helpers.js';
 
@@ -75,28 +76,32 @@ describe('Объект с несколькими лифтами (e2e)', () => {
     expect(obj.lifts[0]).toMatchObject({ name: '', floors: 9, canDelete: false });
   });
 
-  it('добавить лифты: первому нужно название, «×2» нумерует', async () => {
+  it('добавить лифты: первому нужен подъезд, в подъезде — «Лифт 1, 2»', async () => {
     await manager.agent
       .post(`/api/objects/${objectId}/lifts`)
-      .send({ name: 'Подъезд', workType: 'REPLACEMENT', count: 2 })
+      .send({ entrance: 'Подъезд 2', workType: 'REPLACEMENT', count: 2 })
       .expect(400);
     await foreman.agent
       .post(`/api/objects/${objectId}/lifts`)
-      .send({ name: 'Подъезд', workType: 'REPLACEMENT', existingName: 'Подъезд 1' })
+      .send({ entrance: 'Подъезд 2', workType: 'REPLACEMENT', existingEntrance: 'Подъезд 1' })
       .expect(403);
     const res = await manager.agent
       .post(`/api/objects/${objectId}/lifts`)
       .send({
-        name: 'Грузовой',
+        entrance: 'Подъезд 2',
         workType: 'REPLACEMENT',
         count: 2,
         floors: 12,
-        existingName: 'Подъезд 1',
+        existingEntrance: 'Подъезд 1',
         brigadeId: otherBrigadeId,
       })
       .expect(201);
     const obj = res.body as ObjectDetails;
-    expect(obj.lifts.map((l) => l.name)).toEqual(['Подъезд 1', 'Грузовой 1', 'Грузовой 2']);
+    expect(obj.lifts.map(liftLabel)).toEqual([
+      'Подъезд 1',
+      'Подъезд 2, Лифт 1',
+      'Подъезд 2, Лифт 2',
+    ]);
     expect(obj.lifts[1]).toMatchObject({ floors: 12, ownBrigade: true, canDelete: true });
     expect(obj.lifts[1].brigade?.id).toBe(otherBrigadeId);
   });
@@ -177,20 +182,50 @@ describe('Объект с несколькими лифтами (e2e)', () => {
     });
     expect(addresses).toEqual([
       'г. Иваново, ул. Лежневская, д. 120, Подъезд 1',
-      'г. Иваново, ул. Лежневская, д. 120, Грузовой 1',
-      'г. Иваново, ул. Лежневская, д. 120, Грузовой 2',
+      'г. Иваново, ул. Лежневская, д. 120, Подъезд 2, Лифт 1',
+      'г. Иваново, ул. Лежневская, д. 120, Подъезд 2, Лифт 2',
     ]);
   });
 
-  it('удалить лишний лифт; последний оставшийся теряет название', async () => {
+  it('добавить лифт в существующий подъезд: подписи выравниваются', async () => {
+    const res = await manager.agent
+      .post(`/api/objects/${objectId}/lifts`)
+      .send({ entrance: 'Подъезд 1', workType: 'REPLACEMENT' })
+      .expect(201);
+    expect((res.body as ObjectDetails).lifts.map(liftLabel)).toEqual([
+      'Подъезд 1, Лифт 1',
+      'Подъезд 1, Лифт 2',
+      'Подъезд 2, Лифт 1',
+      'Подъезд 2, Лифт 2',
+    ]);
+  });
+
+  it('новый объект сразу с подъездом и несколькими лифтами', async () => {
+    const res = await manager.agent
+      .post('/api/objects')
+      .send({
+        address: 'г. Иваново, ул. Лежневская, д. 122',
+        shortAddress: 'Лежневская, 122',
+        workType: 'REPLACEMENT',
+        entrance: 'Подъезд 1',
+        liftCount: 2,
+      })
+      .expect(201);
+    expect((res.body as ObjectDetails).lifts.map(liftLabel)).toEqual([
+      'Подъезд 1, Лифт 1',
+      'Подъезд 1, Лифт 2',
+    ]);
+  });
+
+  it('удалить лишние лифты: только без отметок и не последний', async () => {
     let obj = (await manager.agent.get(`/api/objects/${objectId}`).expect(200))
       .body as ObjectDetails;
-    await manager.agent.delete(`/api/objects/${objectId}/lifts/${obj.lifts[2].id}`).expect(200);
-    obj = (
-      await manager.agent.delete(`/api/objects/${objectId}/lifts/${obj.lifts[1].id}`).expect(200)
-    ).body as ObjectDetails;
+    const marked = obj.lifts.find((l) => l.percent > 0);
+    for (const l of obj.lifts.filter((x) => x.id !== marked?.id)) {
+      obj = (await manager.agent.delete(`/api/objects/${objectId}/lifts/${l.id}`).expect(200))
+        .body as ObjectDetails;
+    }
     expect(obj.lifts).toHaveLength(1);
-    expect(obj.lifts[0].name).toBe('');
     await manager.agent.delete(`/api/objects/${objectId}/lifts/${obj.lifts[0].id}`).expect(400);
   });
 });

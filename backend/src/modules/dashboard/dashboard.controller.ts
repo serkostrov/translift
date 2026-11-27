@@ -5,7 +5,7 @@ import { CurrentUser, Roles } from '../../common/auth/decorators.js';
 import type { Env } from '../../common/config/env.js';
 import { todayIn } from '../../common/lib/dates.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
-import type { DashboardDto, SessionUser } from '../../contracts/index.js';
+import { type DashboardDto, liftLabel, type SessionUser } from '../../contracts/index.js';
 import { toFileDto } from '../files/files.service.js';
 import { ObjectsService } from '../objects/objects.service.js';
 
@@ -35,8 +35,8 @@ export class DashboardController {
         include: {
           stage: { select: { shortName: true, percent: true } },
           author: { select: { fullName: true } },
-          object: { select: { id: true, shortAddress: true } },
-          lift: { select: { name: true } },
+          lift: { select: { entrance: true, name: true, position: true } },
+          object: { select: { id: true, shortAddress: true, _count: { select: { lifts: true } } } },
           photos: { orderBy: { createdAt: 'asc' }, take: 3 },
         },
       }),
@@ -84,8 +84,8 @@ export class DashboardController {
         id: m.id,
         performedAt: m.performedAt.toISOString(),
         author: m.author.fullName,
-        object: m.object,
-        lift: m.lift.name,
+        object: { id: m.object.id, shortAddress: m.object.shortAddress },
+        lift: m.object._count.lifts > 1 ? liftLabel(m.lift) : '',
         stage: m.stage.shortName,
         percent: m.stage.percent,
         comment: m.comment,

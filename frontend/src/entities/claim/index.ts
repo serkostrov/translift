@@ -1,10 +1,12 @@
 export {
   claimKeys,
+  useAddFinanceEntry,
   useClaim,
   useClaimPages,
   useClaims,
   useCommentClaim,
   useCreateClaim,
+  useDeleteFinanceEntry,
   useFinance,
   useSaveFinance,
   useSuppliers,

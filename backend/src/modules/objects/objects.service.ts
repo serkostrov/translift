@@ -11,6 +11,7 @@ import { dateIn, fromDateString, toDateString, todayIn } from '../../common/lib/
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
   type AuditEntry,
+  compareLifts,
   DELIVERY_STATUSES,
   type DeliveryStatus,
   type LiftCreate,
@@ -19,13 +20,13 @@ import {
   type LiftUpdate,
   liftCreateSchema,
   liftLabel,
-  newLiftNames,
   type ObjectCreate,
   type ObjectDetails,
   type ObjectListItem,
   type ObjectListQuery,
   type ObjectUpdate,
   type Page,
+  planLifts,
   type SessionUser,
   type StageRef,
 } from '../../contracts/index.js';
@@ -164,7 +165,10 @@ export class ObjectsService {
   }
 
   async create(body: ObjectCreate, user: SessionUser): Promise<ObjectDetails> {
-    const { address, shortAddress, contractId, brigadeId, deadline, workType, liftName } = body;
+    const { address, shortAddress, contractId, brigadeId, deadline, workType } = body;
+    const entrance = body.entrance ?? '';
+    // Несколько лифтов сразу — «Лифт 1…N» подъезда; один — без подписи
+    const { names } = planLifts('', body.liftCount, []);
     const template = await this.prisma.stageTemplate.findUniqueOrThrow({ where: { workType } });
     const row = await this.prisma.$transaction(async (tx) => {
       const created = await tx.liftObject.create({
@@ -175,14 +179,16 @@ export class ObjectsService {
           brigadeId,
           deadline: fromDateString(deadline),
           lifts: {
-            create: {
-              name: liftName ?? '',
+            create: names.map((name, i) => ({
+              entrance,
+              name,
+              position: i + 1,
               floors: body.floors,
               capacityKg: body.capacityKg,
               liftInfo: body.liftInfo,
               plannedStartDate: fromDateString(body.plannedStartDate),
               templateId: template.id,
-            },
+            })),
           },
         },
       });
@@ -239,7 +245,7 @@ export class ObjectsService {
 
   // ---------- лифты ----------
 
-  /** Добавить один или несколько одинаковых лифтов. */
+  /** Добавить один или несколько одинаковых лифтов в подъезд — существующий или новый. */
   async addLifts(objectId: string, input: LiftCreate, user: SessionUser): Promise<ObjectDetails> {
     const body = liftCreateSchema.parse(input);
     const object = await this.prisma.liftObject.findUnique({
@@ -247,25 +253,40 @@ export class ObjectsService {
       include: { lifts: { orderBy: { position: 'asc' } } },
     });
     if (!object) throw new NotFoundException('Объект не найден');
-    const unnamed = object.lifts.filter((l) => !l.name);
-    if (unnamed.length > 0 && !body.existingName) {
-      throw new BadRequestException('Дайте название лифту, который уже есть в объекте');
+    // Лифт без подъезда и названия получает подъезд, иначе подписи не различить
+    const unlabeled = object.lifts.filter((l) => !l.entrance && !l.name);
+    if (unlabeled.length > 0 && !body.existingEntrance) {
+      throw new BadRequestException('Укажите подъезд лифта, который уже есть в объекте');
     }
+    const lifts = object.lifts.map((l) =>
+      !l.entrance && !l.name ? { ...l, entrance: body.existingEntrance ?? '' } : l,
+    );
     const template = await this.prisma.stageTemplate.findUniqueOrThrow({
       where: { workType: body.workType },
     });
-    const start = Math.max(0, ...object.lifts.map((l) => l.position)) + 1;
-    const existing = object.lifts.map((l) => (l.name ? l.name : (body.existingName ?? '')));
-    const names = newLiftNames(body.name, body.count, existing);
+    const start = Math.max(0, ...lifts.map((l) => l.position)) + 1;
+    const { names, renames } = planLifts(
+      body.name ?? '',
+      body.count,
+      lifts.filter((l) => l.entrance === body.entrance),
+    );
+    const labels = names.map((name) => liftLabel({ entrance: body.entrance, name, position: 0 }));
 
     await this.prisma.$transaction(async (tx) => {
-      for (const l of unnamed) {
-        await tx.lift.update({ where: { id: l.id }, data: { name: body.existingName ?? '' } });
+      for (const l of unlabeled) {
+        await tx.lift.update({
+          where: { id: l.id },
+          data: { entrance: body.existingEntrance ?? '' },
+        });
+      }
+      for (const r of renames) {
+        await tx.lift.update({ where: { id: r.id }, data: { name: r.name } });
       }
       for (const [i, name] of names.entries()) {
         await tx.lift.create({
           data: {
             objectId,
+            entrance: body.entrance,
             name,
             position: start + i,
             floors: body.floors,
@@ -284,7 +305,7 @@ export class ObjectsService {
           entityId: objectId,
           objectId,
           action: 'lifts',
-          changes: { text: `Добавил лифты: ${names.join(', ')}` },
+          changes: { text: `Добавил лифты: ${labels.join('; ')}` },
         },
         tx,
       );
@@ -293,7 +314,7 @@ export class ObjectsService {
           tx,
           body.brigadeId,
           objectId,
-          `${object.shortAddress}, ${names.join(', ')}`,
+          `${object.shortAddress}, ${labels.join('; ')}`,
         );
       }
     });
@@ -311,9 +332,13 @@ export class ObjectsService {
       include: { object: { select: { shortAddress: true, brigadeId: true } } },
     });
     if (!before) throw new NotFoundException('Лифт не найден');
-    if (body.name !== undefined && !body.name) {
+    const entrance = body.entrance ?? before.entrance;
+    const name = body.name ?? before.name;
+    if (!entrance && !name) {
       const others = await this.prisma.lift.count({ where: { objectId, id: { not: liftId } } });
-      if (others > 0) throw new BadRequestException('В объекте несколько лифтов — нужно название');
+      if (others > 0) {
+        throw new BadRequestException('В объекте несколько лифтов — укажите подъезд или название');
+      }
     }
 
     const data: Record<string, unknown> = { ...body };
@@ -341,9 +366,10 @@ export class ObjectsService {
           typeof data.brigadeId === 'string' &&
           data.brigadeId !== object.brigadeId
         ) {
-          const label = before.name
-            ? `${object.shortAddress}, ${before.name}`
-            : object.shortAddress;
+          const label =
+            entrance || name
+              ? `${object.shortAddress}, ${liftLabel({ entrance, name, position: 0 })}`
+              : object.shortAddress;
           await this.notifyForeman(tx, data.brigadeId, objectId, label);
         }
       });
@@ -364,8 +390,6 @@ export class ObjectsService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.lift.delete({ where: { id: liftId } });
-      // Остался один лифт — название ему больше не нужно
-      if (total === 2) await tx.lift.updateMany({ where: { objectId }, data: { name: '' } });
       await this.audit.log(
         {
           userId: user.id,
@@ -400,9 +424,13 @@ export class ObjectsService {
     ]);
     const [names, lifts] = await Promise.all([
       this.refNames(rows),
-      this.prisma.lift.findMany({ where: { objectId: id }, select: { id: true, name: true } }),
+      this.prisma.lift.findMany({
+        where: { objectId: id },
+        select: { id: true, entrance: true, name: true, position: true },
+      }),
     ]);
-    const liftNames = new Map(lifts.map((l) => [l.id, l.name]));
+    // Подпись лифта в истории — только когда лифтов несколько
+    const liftNames = new Map(lifts.length > 1 ? lifts.map((l) => [l.id, liftLabel(l)]) : []);
     const items = rows.map((r) => {
       const text = this.describe(
         r.action,
@@ -451,7 +479,9 @@ export class ObjectsService {
         brigadeId: true,
         archivedAt: true,
         shortAddress: true,
-        lifts: { select: { id: true, name: true, brigadeId: true } },
+        lifts: {
+          select: { id: true, entrance: true, name: true, position: true, brigadeId: true },
+        },
       },
     });
     if (!obj) throw new NotFoundException('Объект не найден');
@@ -542,6 +572,7 @@ export class ObjectsService {
       result: { ...r, label: liftLabel(lift), lastMarkDate },
       summary: {
         id: lift.id,
+        entrance: lift.entrance,
         name: lift.name,
         position: lift.position,
         workType: lift.template.workType,
@@ -567,6 +598,7 @@ export class ObjectsService {
     stages: Map<string, StageRef[]>,
     today: string,
   ): ObjectListItem {
+    row.lifts.sort(compareLifts);
     const evaluated = row.lifts.map((l) => this.evaluateLift(row, l, stages, today));
     const lifts = evaluated.map((e) => e.summary);
     const total = combineLifts(evaluated.map((e) => e.result));
@@ -673,6 +705,7 @@ export class ObjectsService {
     if ((action === 'claim' || action === 'import' || action === 'lifts') && changes)
       return String(changes.text ?? action);
     if (action === 'finance' && changes) {
+      if (changes.text) return String(changes.text);
       const labels: Record<string, string> = {
         contractNumber: 'номер договора',
         contractDate: 'дата договора',
@@ -681,11 +714,10 @@ export class ObjectsService {
         customerPrice: 'стоимость для заказчика',
         closedWorksAmount: 'закрытые работы',
         paidAmount: 'оплата',
-        debt: 'остаток',
       };
       const fields = Object.keys(changes)
-        .filter((k) => k !== 'debt')
-        .map((k) => labels[k] ?? k);
+        .filter((k) => labels[k])
+        .map((k) => labels[k]);
       return `Изменил финансовые сведения: ${fields.join(', ')}`;
     }
     if (action === 'revoke' && changes) {

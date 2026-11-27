@@ -18,6 +18,21 @@ const stateDot = (l: LiftDetails) =>
           ? 'bg-muted-foreground/40'
           : 'bg-progress';
 
+/** Лифты подряд одного подъезда — для общей шапки в таблице. Сервер отдаёт их по подъездам. */
+function groupsOf(lifts: LiftDetails[]) {
+  const groups: { key: string; entrance: string; lifts: LiftDetails[] }[] = [];
+  for (const l of lifts) {
+    const last = groups.at(-1);
+    if (last && last.entrance === l.entrance) last.lifts.push(l);
+    else groups.push({ key: l.id, entrance: l.entrance, lifts: [l] });
+  }
+  return groups;
+}
+
+/** Первый лифт подъезда — слева разделитель. */
+const startsGroup = (lifts: LiftDetails[], i: number) =>
+  i > 0 && lifts[i - 1].entrance !== lifts[i].entrance;
+
 /** Переключатель «Все · Лифт 1 · Лифт 2…»: прокручивается внутри себя, страница — нет. */
 export function LiftSwitcher({
   lifts,
@@ -109,12 +124,35 @@ export function LiftMatrix({
               <div key={templateId} className="overflow-x-auto">
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead>
+                    {/* Подъезды — общей шапкой над своими лифтами */}
+                    {groupsOf(lifts).some((g) => g.entrance) && (
+                      <tr>
+                        <th className="sticky left-0 z-10 bg-card" />
+                        {groupsOf(lifts).map((g) => (
+                          <th
+                            key={g.key}
+                            colSpan={g.lifts.length}
+                            className="border-l px-1 pt-1 text-center text-xs font-medium"
+                          >
+                            <span className="block truncate rounded-sm bg-muted px-2 py-1">
+                              {g.entrance || 'Без подъезда'}
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    )}
                     <tr>
                       <th className="sticky left-0 z-10 bg-card pb-2 text-left font-normal text-muted-foreground">
                         Этап
                       </th>
-                      {lifts.map((l) => (
-                        <th key={l.id} className="px-1 pb-2 align-bottom">
+                      {lifts.map((l, i) => (
+                        <th
+                          key={l.id}
+                          className={cn(
+                            'px-1 pb-2 align-bottom',
+                            startsGroup(lifts, i) && 'border-l',
+                          )}
+                        >
                           <button
                             type="button"
                             onClick={() => onSelectLift(l.id)}
@@ -122,7 +160,7 @@ export function LiftMatrix({
                             title={liftLabel(l)}
                           >
                             <span className="line-clamp-2 text-xs leading-tight font-medium">
-                              {liftLabel(l)}
+                              {l.entrance ? l.name || 'Лифт' : liftLabel(l)}
                             </span>
                             <span className="text-xs tabular-nums text-muted-foreground">
                               {l.percent}%
@@ -141,7 +179,7 @@ export function LiftMatrix({
                           </span>
                           {s.shortName}
                         </td>
-                        {lifts.map((l) => {
+                        {lifts.map((l, i) => {
                           const current = l.currentStage?.order ?? 0;
                           const done = s.order <= current;
                           const next = s.order === current + 1;
@@ -162,7 +200,10 @@ export function LiftMatrix({
                           return (
                             <td
                               key={l.id}
-                              className="border-t px-1 py-1 text-center group-hover:bg-muted/40"
+                              className={cn(
+                                'border-t px-1 py-1 text-center group-hover:bg-muted/40',
+                                startsGroup(lifts, i) && 'border-l',
+                              )}
                               title={
                                 done && date
                                   ? `${liftLabel(l)}: ${formatDate(date.slice(0, 10))}`

@@ -5,6 +5,7 @@ import type {
   ClaimListQuery,
   ClaimUpdate,
   FinanceDto,
+  FinanceEntryCreate,
   FinanceUpdate,
   Page,
 } from '@contracts';
@@ -81,6 +82,32 @@ export function useFinance(objectId: string) {
   return useQuery({
     queryKey: ['finance', objectId],
     queryFn: () => http<FinanceDto>(`/objects/${objectId}/finance`),
+  });
+}
+
+/** Платёж, доп. соглашение или расход — добавить. */
+export function useAddFinanceEntry(objectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: FinanceEntryCreate) =>
+      http<FinanceDto>(`/objects/${objectId}/finance/entries`, { method: 'POST', body }),
+    onSuccess: (data) => {
+      qc.setQueryData(['finance', objectId], data);
+      qc.invalidateQueries({ queryKey: ['objects', 'history', objectId] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useDeleteFinanceEntry(objectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (entryId: string) =>
+      http<FinanceDto>(`/objects/${objectId}/finance/entries/${entryId}`, { method: 'DELETE' }),
+    onSuccess: (data) => {
+      qc.setQueryData(['finance', objectId], data);
+      qc.invalidateQueries({ queryKey: ['objects', 'history', objectId] });
+    },
   });
 }
 

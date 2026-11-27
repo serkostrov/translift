@@ -118,16 +118,53 @@ describe('Сводка, уведомления, рекламации, финан
   });
 
   it('финансы: правит финансист, руководитель видит, бригадир — нет; остаток считается', async () => {
-    await manager.agent.put(`/api/objects/${objectId}/finance`).send({ paidAmount: 1 }).expect(403);
-    await foreman.agent.get(`/api/objects/${objectId}/finance`).expect(403);
-    const saved = await finance.agent
+    await manager.agent
       .put(`/api/objects/${objectId}/finance`)
-      .send({ contractAmount: 3_000_000, customerPrice: 2_850_000.5, paidAmount: 1_000_000 })
+      .send({ contractAmount: 1 })
+      .expect(403);
+    await manager.agent
+      .post(`/api/objects/${objectId}/finance/entries`)
+      .send({ type: 'PAYMENT', title: 'x', amount: 1, date: '2026-11-01' })
+      .expect(403);
+    await foreman.agent.get(`/api/objects/${objectId}/finance`).expect(403);
+    await finance.agent
+      .put(`/api/objects/${objectId}/finance`)
+      .send({ contractAmount: 3_000_000 })
       .expect(200);
-    expect((saved.body as FinanceDto).debt).toBe(1_850_000.5);
+    const paid = await finance.agent
+      .post(`/api/objects/${objectId}/finance/entries`)
+      .send({ type: 'PAYMENT', title: 'Аванс', amount: 1_000_000, date: '2026-11-01' })
+      .expect(201);
+    expect((paid.body as FinanceDto).debt).toBe(2_000_000);
+    // Расход без статьи и платёж с нулём — ошибки
+    await finance.agent
+      .post(`/api/objects/${objectId}/finance/entries`)
+      .send({ type: 'EXPENSE', title: 'Что-то', amount: 10, date: '2026-11-01' })
+      .expect(400);
+    // Расходы больше суммы — объект в минусе, руководителям уведомление
+    const minus = await finance.agent
+      .post(`/api/objects/${objectId}/finance/entries`)
+      .send({
+        type: 'EXPENSE',
+        kind: 'WORKS',
+        title: 'Монтаж',
+        amount: 3_100_000,
+        date: '2026-11-02',
+      })
+      .expect(201);
+    expect((minus.body as FinanceDto).profit).toBe(-100_000);
+    const notes = await manager.agent.get('/api/notifications').expect(200);
+    expect(notes.body.items.some((n: { topic: string }) => n.topic === 'Объект в минусе')).toBe(
+      true,
+    );
     const seen = (await manager.agent.get(`/api/objects/${objectId}/finance`).expect(200))
       .body as FinanceDto;
-    expect(seen.paidAmount).toBe(1_000_000);
+    expect(seen.entries).toHaveLength(2);
+    // Удалили ошибочный расход — снова в плюсе
+    const back = await finance.agent
+      .delete(`/api/objects/${objectId}/finance/entries/${seen.entries[0].id}`)
+      .expect(200);
+    expect((back.body as FinanceDto).profit).toBe(3_000_000);
   });
 
   it('хранилище: статистика и очистка оригиналов старых фото сданных объектов', async () => {

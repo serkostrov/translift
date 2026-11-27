@@ -65,6 +65,7 @@ const int = (v: ExcelJS.CellValue) => {
 const COLUMN_HINTS: Record<string, string[]> = {
   num: ['№'],
   address: ['адрес'],
+  entrance: ['подъезд'],
   lift: ['лифт'],
   floors: ['этажн'],
   capacity: ['грузоподъем'],
@@ -79,13 +80,13 @@ const COLUMN_HINTS: Record<string, string[]> = {
   ks: ['кс-2', 'кс 2'],
 };
 
-type KnownLift = { id: string; name: string; templateId: string };
+type KnownLift = { id: string; entrance: string; name: string; templateId: string };
 type KnownObject = { id: string; lifts: KnownLift[] };
 
 /**
  * Импорт объектов из Excel в формате отчёта генподрядчику (форма ФКР).
  * Существующие объекты (по совпадению адреса) обновляются, новые создаются.
- * Строки с одним адресом и разными значениями в колонке «Лифт» — лифты одного объекта.
+ * Строки с одним адресом и разными «Подъезд» / «Лифт» — лифты одного объекта.
  * TODO(заказчик): подстроить под согласованный шаблон Excel заказчика.
  */
 @Injectable()
@@ -135,7 +136,7 @@ export class ImportService {
       select: {
         id: true,
         address: true,
-        lifts: { select: { id: true, name: true, templateId: true } },
+        lifts: { select: { id: true, entrance: true, name: true, templateId: true } },
       },
     });
     const byAddress = new Map<string, KnownObject>(
@@ -159,7 +160,9 @@ export class ImportService {
       }
 
       const messages: string[] = [];
+      const entrance = text(get('entrance'));
       const liftName = text(get('lift'));
+      const labeled = !!(entrance || liftName);
       const stageText = text(get('stage'));
       const percent = int(get('percent'));
       let stage = stageText
@@ -190,24 +193,27 @@ export class ImportService {
       let lift: KnownLift | undefined;
       let renameLift = false;
       if (found) {
-        lift = liftName
-          ? found.lifts.find((l) => norm(l.name) === norm(liftName))
+        lift = labeled
+          ? found.lifts.find(
+              (l) => norm(l.entrance) === norm(entrance) && norm(l.name) === norm(liftName),
+            )
           : found.lifts.length === 1
             ? found.lifts[0]
             : undefined;
-        if (!lift && liftName && found.lifts.length === 1 && !found.lifts[0].name) {
+        const [only] = found.lifts;
+        if (!lift && labeled && found.lifts.length === 1 && !only.entrance && !only.name) {
           // Единственный лифт без названия получает название из файла
           lift = found.lifts[0];
           renameLift = true;
         }
       }
-      if (found && !lift && !liftName) {
+      if (found && !lift && !labeled) {
         results.push({
           row: r,
           address,
           action: 'error',
           stage: null,
-          messages: ['В объекте несколько лифтов — укажите лифт в колонке «Лифт»'],
+          messages: ['В объекте несколько лифтов — укажите подъезд или лифт'],
         });
         continue;
       }
@@ -218,7 +224,9 @@ export class ImportService {
 
       const result: ImportRowResult = {
         row: r,
-        address: liftName ? `${address}, ${liftName}` : address,
+        address: labeled
+          ? `${address}, ${[entrance, liftName].filter(Boolean).join(', ')}`
+          : address,
         action: lift ? 'update' : 'create',
         stage: stage ? `${stage.shortName} — ${stage.percent}%` : null,
         messages,
@@ -243,6 +251,7 @@ export class ImportService {
         const filled = Object.fromEntries(Object.entries(liftValues).filter(([, v]) => v !== null));
         const newLift = {
           ...liftValues,
+          entrance,
           name: liftName,
           templateId: template.id,
           currentStageId: stage?.id ?? null,
@@ -263,11 +272,11 @@ export class ImportService {
               where: { id: lift.id },
               data: {
                 ...filled,
-                ...(renameLift ? { name: liftName } : {}),
+                ...(renameLift ? { entrance, name: liftName } : {}),
                 ...(stage ? { currentStageId: stage.id } : {}),
               },
             });
-            if (renameLift) lift.name = liftName;
+            if (renameLift) Object.assign(lift, { entrance, name: liftName });
           } else {
             const created = await this.prisma.lift.create({
               data: {
@@ -287,7 +296,9 @@ export class ImportService {
               contractId: options.contractId ?? null,
               lifts: { create: newLift },
             },
-            include: { lifts: { select: { id: true, name: true, templateId: true } } },
+            include: {
+              lifts: { select: { id: true, entrance: true, name: true, templateId: true } },
+            },
           });
           objectId = created.id;
           byAddress.set(norm(address), { id: created.id, lifts: created.lifts });

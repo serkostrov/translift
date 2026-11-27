@@ -36,8 +36,12 @@ describe('Договоры и заказчики (e2e)', () => {
       objectIds.push(o.body.id);
       await admin.agent
         .put(`/api/objects/${o.body.id}/finance`)
-        .send({ contractAmount: amount, paidAmount: amount / 4 })
+        .send({ contractAmount: amount })
         .expect(200);
+      await admin.agent
+        .post(`/api/objects/${o.body.id}/finance/entries`)
+        .send({ type: 'PAYMENT', title: 'Аванс', amount: amount / 4, date: '2026-11-01' })
+        .expect(201);
     }
     // Второй объект — в архиве: в карточке договора он всё равно есть
     await admin.agent.patch(`/api/objects/${objectIds[1]}`).send({ archived: true }).expect(200);

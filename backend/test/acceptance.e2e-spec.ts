@@ -221,13 +221,33 @@ describe('Приёмка по ТЗ: 8 критериев', () => {
       .send({
         contractNumber: 'ТЭ4-0520/1-2026',
         contractAmount: 3_200_000,
-        equipmentCost: 2_100_000,
-        customerPrice: 3_050_000,
         closedWorksAmount: 900_000,
-        paidAmount: 1_250_000.5,
       })
       .expect(200);
-    expect((saved.body as FinanceDto).debt).toBe(1_799_999.5);
+    expect((saved.body as FinanceDto).debt).toBe(3_200_000);
+    const entry = (body: object) =>
+      finance.post(`/api/objects/${objectId}/finance/entries`).send(body).expect(201);
+    await entry({
+      type: 'AGREEMENT',
+      title: 'ДС №1: доп. двери',
+      amount: 150_000,
+      date: '2026-03-01',
+    });
+    await entry({ type: 'PAYMENT', title: 'Аванс', amount: 1_250_000.5, date: '2026-03-02' });
+    const res = await entry({
+      type: 'EXPENSE',
+      kind: 'EQUIPMENT',
+      title: 'Лифт ЩЛЗ',
+      amount: 2_100_000,
+      date: '2026-03-03',
+    });
+    expect(res.body as FinanceDto).toMatchObject({
+      totalAmount: 3_350_000,
+      paidAmount: 1_250_000.5,
+      debt: 2_099_999.5,
+      expensesTotal: 2_100_000,
+      profit: 1_250_000,
+    });
     // Бригадир финансов не видит
     await foreman.get(`/api/objects/${objectId}/finance`).expect(403);
   });

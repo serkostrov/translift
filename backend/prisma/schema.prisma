@@ -52,6 +52,7 @@ model User {
   notifications     Notification[]
   notificationReads NotificationRead[]
   claimComments     ClaimComment[]
+  financeEntries    FinanceEntry[]
 }
 
 model Session {
@@ -183,6 +184,7 @@ model LiftObject {
   files         File[]
   claims        Claim[]
   finance       ObjectFinance?
+  financeEntries FinanceEntry[]
   auditLogs     AuditLog[]
   notifications Notification[]
 
@@ -195,7 +197,10 @@ model Lift {
   id       String     @id @default(uuid(7)) @db.Uuid
   objectId String     @db.Uuid
   object   LiftObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  /// «Подъезд 1, грузовой». Пусто — единственный лифт объекта, название не показываем
+  /// Подъезд: «Подъезд 1». Лифты одного подъезда показываются вместе
+  entrance String     @default("")
+  /// Лифт в подъезде: «Грузовой», «Лифт 2». Пусто вместе с подъездом — единственный лифт
+  /// объекта, подпись не показываем
   name     String     @default("")
   /// Порядок в объекте
   position Int        @default(1)
@@ -353,12 +358,42 @@ model ObjectFinance {
   object            LiftObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
   contractNumber    String?
   contractDate      DateTime?  @db.Date
+  /// Сколько заказчик платит по договору за объект
   contractAmount    Decimal?   @db.Decimal(14, 2)
-  equipmentCost     Decimal?   @db.Decimal(14, 2) // стоимость оборудования от завода
-  customerPrice     Decimal?   @db.Decimal(14, 2) // стоимость для Заказчика
-  closedWorksAmount Decimal?   @db.Decimal(14, 2) // сумма закрытых работ
-  paidAmount        Decimal?   @db.Decimal(14, 2) // поступившая оплата
+  closedWorksAmount Decimal?   @db.Decimal(14, 2) // сумма закрытых работ (по актам КС-2)
   updatedAt         DateTime   @updatedAt @db.Timestamptz
+}
+
+enum FinanceEntryType {
+  PAYMENT // платёж от заказчика
+  AGREEMENT // доп. соглашение: меняет сумму, которую заказчик заплатит
+  EXPENSE // наш расход на объект
+}
+
+enum ExpenseKind {
+  EQUIPMENT // оборудование
+  WORKS // работы: бригада, подрядчики
+  OTHER // прочее: доставка, материалы, командировки
+}
+
+/// Движение денег по объекту. Сумма для заказчика = сумма договора + доп. соглашения;
+/// оплачено = платежи; доходность = сумма для заказчика − расходы.
+model FinanceEntry {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  objectId  String           @db.Uuid
+  object    LiftObject       @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  type      FinanceEntryType
+  /// Статья расхода — только у расходов
+  kind      ExpenseKind?
+  title     String
+  /// Положительная; у доп. соглашения может быть отрицательной (уменьшение суммы)
+  amount    Decimal          @db.Decimal(14, 2)
+  date      DateTime         @db.Date
+  authorId  String?          @db.Uuid
+  author    User?            @relation(fields: [authorId], references: [id])
+  createdAt DateTime         @default(now()) @db.Timestamptz
+
+  @@index([objectId, date])
 }
 
 // ---------- Журнал и уведомления ----------

@@ -48,7 +48,14 @@ const liftFieldsShape = {
   plannedStartDate: dateOrNull,
 };
 
-/** Новый объект сразу с первым лифтом — для одного лифта форма та же, что и раньше. */
+/** Сколько лифтов можно добавить за раз */
+export const MAX_LIFTS_AT_ONCE = 20;
+const liftCount = z.coerce.number().int().min(1).max(MAX_LIFTS_AT_ONCE).default(1);
+
+/**
+ * Новый объект с лифтами. Для одного лифта форма та же, что и раньше; можно сразу указать
+ * подъезд и сколько в нём лифтов — тогда они будут «Лифт 1…N» этого подъезда.
+ */
 export const objectCreateSchema = z.object({
   address: requiredText(500),
   shortAddress: requiredText(200),
@@ -56,8 +63,9 @@ export const objectCreateSchema = z.object({
   contractId: idSchema.nullable().optional(),
   brigadeId: idSchema.nullable().optional(),
   deadline: dateOrNull,
-  /** Название первого лифта; для объекта с одним лифтом не нужно */
-  liftName: optionalText(100),
+  /** Подъезд; для объекта с одним лифтом можно не указывать */
+  entrance: optionalText(100),
+  liftCount,
   ...liftFieldsShape,
 });
 export type ObjectCreate = z.infer<typeof objectCreateSchema>;
@@ -75,27 +83,29 @@ export const objectUpdateSchema = z
   .partial();
 export type ObjectUpdate = z.infer<typeof objectUpdateSchema>;
 
-/** Сколько лифтов можно добавить за раз */
-export const MAX_LIFTS_AT_ONCE = 20;
-
-/** Новый лифт объекта. При count > 1 к названию добавляется номер: «Подъезд 1», «Подъезд 2»… */
+/**
+ * Новые лифты объекта: в существующий подъезд или новый. Название лифта необязательно
+ * («Грузовой»); без него и при нескольких лифтах в подъезде они нумеруются «Лифт 1, 2…».
+ */
 export const liftCreateSchema = z.object({
-  name: requiredText(100),
+  entrance: requiredText(100),
+  name: optionalText(100),
   workType: workTypeSchema,
   /** Своя бригада лифта; пусто — бригада объекта */
   brigadeId: idSchema.nullable().optional(),
-  count: z.coerce.number().int().min(1).max(MAX_LIFTS_AT_ONCE).default(1),
+  count: liftCount,
   /**
-   * Название для лифта, который уже был в объекте без названия:
-   * как только лифтов становится больше одного, названия нужны всем.
+   * Подъезд лифта, который уже был в объекте без подписи:
+   * как только лифтов становится больше одного, подпись нужна каждому.
    */
-  existingName: optionalText(100),
+  existingEntrance: optionalText(100),
   ...liftFieldsShape,
 });
 export type LiftCreate = z.input<typeof liftCreateSchema>;
 
 export const liftUpdateSchema = z
   .object({
+    entrance: z.string().trim().max(100),
     name: z.string().trim().max(100),
     brigadeId: idSchema.nullable(),
     ...liftFieldsShape,
@@ -140,7 +150,9 @@ export type StageRef = { id: string; order: number; shortName: string; percent: 
 /** Готовность одного лифта. */
 export type LiftSummary = {
   id: string;
-  /** Название; пусто — единственный лифт объекта */
+  /** Подъезд: «Подъезд 1» */
+  entrance: string;
+  /** Лифт в подъезде: «Грузовой», «Лифт 2». Пусто вместе с подъездом — единственный лифт */
   name: string;
   position: number;
   workType: WorkType;
@@ -212,22 +224,49 @@ export type ObjectDetails = Omit<ObjectListItem, 'lifts'> & {
   updatedAt: string;
 };
 
-/**
- * Названия новых лифтов: «Подъезд» ×3 → «Подъезд 1…3». Нумерация продолжает уже занятые
- * номера: если есть «Подъезд 1», новые будут «Подъезд 2», «Подъезд 3».
- */
-export function newLiftNames(name: string, count: number, existing: string[]): string[] {
-  if (count === 1) return [name];
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Номера после основы: «Лифт» и [«Лифт 1», «Грузовой»] → следующий — 2. */
+function nextNumber(base: string, names: string[]) {
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`^${escaped} (\\d+)$`);
-  const taken = existing.map((n) => Number(re.exec(n)?.[1] ?? 0));
-  const start = Math.max(0, ...taken) + 1;
-  return Array.from({ length: count }, (_, i) => `${name} ${start + i}`);
+  return Math.max(0, ...names.map((n) => Number(re.exec(n)?.[1] ?? 0))) + 1;
 }
 
-/** Подпись лифта: название или «Лифт N», если названия нет. */
-export const liftLabel = (lift: { name: string; position: number }) =>
-  lift.name || `Лифт ${lift.position}`;
+/**
+ * Названия новых лифтов в подъезде. Один лифт с названием — как есть. Несколько — с номерами,
+ * продолжая занятые: «Грузовой» ×2 → «Грузовой 1, 2». Без названия: единственный лифт подъезда
+ * остаётся без подписи, иначе нумеруются «Лифт 1, 2…» — и лифт подъезда без названия,
+ * что уже был, становится «Лифт 1», чтобы подписи не совпадали.
+ */
+export function planLifts(
+  name: string,
+  count: number,
+  inEntrance: { id: string; name: string }[],
+): { names: string[]; renames: { id: string; name: string }[] } {
+  if (name && count === 1) return { names: [name], renames: [] };
+  if (!name && count === 1 && inEntrance.length === 0) return { names: [''], renames: [] };
+  const base = name || 'Лифт';
+  const renames: { id: string; name: string }[] = [];
+  const taken = inEntrance.map((l) => l.name);
+  if (!name) {
+    for (const l of inEntrance.filter((x) => !x.name)) {
+      const renamed = `${base} ${nextNumber(base, taken)}`;
+      renames.push({ id: l.id, name: renamed });
+      taken.push(renamed);
+    }
+  }
+  const start = nextNumber(base, taken);
+  return { names: Array.from({ length: count }, (_, i) => `${base} ${start + i}`), renames };
+}
+
+/** Подпись лифта: «Подъезд 2, грузовой»; без подъезда и названия — «Лифт N». */
+export const liftLabel = (lift: { entrance: string; name: string; position: number }) =>
+  [lift.entrance, lift.name].filter(Boolean).join(', ') || `Лифт ${lift.position}`;
+
+/** Порядок лифтов: по подъездам (с учётом номеров: 2 раньше 10), внутри — по порядку добавления. */
+export const compareLifts = (
+  a: { entrance: string; position: number },
+  b: { entrance: string; position: number },
+) => a.entrance.localeCompare(b.entrance, 'ru', { numeric: true }) || a.position - b.position;
 
 export type AuditEntry = {
   id: string;

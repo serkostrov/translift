@@ -11,6 +11,7 @@ import { daysBetween, todayIn } from '../../common/lib/dates.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
   CONTROL_DATE_FIELDS,
+  liftLabel,
   MARK_BACKDATE_DAYS,
   type MarkCreate,
   type MarkDto,
@@ -70,7 +71,7 @@ export class MarksService {
     if (access.object.archivedAt) throw new BadRequestException('Объект в архиве');
     const liftId = access.lift.id;
     // Название лифта в журнале и уведомлениях — только когда лифтов несколько
-    const liftName = access.lift.name || null;
+    const liftName = access.object.lifts.length > 1 ? liftLabel(access.lift) : null;
 
     const lift = await this.prisma.lift.findUniqueOrThrow({
       where: { id: liftId },
@@ -194,7 +195,7 @@ export class MarksService {
 
   /** Отмена последней отметки: объект возвращается на предыдущий этап. Даты не трогаем. */
   async revokeLast(objectId: string, liftId: string | undefined, user: SessionUser) {
-    const { lift } = await this.objects.ensureLift(objectId, liftId, user);
+    const { object, lift } = await this.objects.ensureLift(objectId, liftId, user);
     const marks = await this.prisma.stageMark.findMany({
       where: { liftId: lift.id, revokedAt: null },
       include: { stage: true },
@@ -218,7 +219,7 @@ export class MarksService {
           action: 'revoke',
           changes: {
             stage: [last.stage.shortName, prev?.stage.shortName ?? null],
-            ...(lift.name ? { lift: [null, lift.name] } : {}),
+            ...(object.lifts.length > 1 ? { lift: [null, liftLabel(lift)] } : {}),
           },
         },
         tx,

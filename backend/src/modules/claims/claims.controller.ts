@@ -39,7 +39,7 @@ import { ObjectsService } from '../objects/objects.service.js';
 
 const listInclude = {
   object: { select: { id: true, shortAddress: true } },
-  lift: { select: { id: true, name: true, position: true } },
+  lift: { select: { id: true, entrance: true, name: true, position: true } },
   _count: { select: { comments: true, files: true } },
 } as const;
 type ClaimRow = Prisma.ClaimGetPayload<{ include: typeof listInclude }>;
