@@ -5,6 +5,11 @@
 {
 	# Почта для Let's Encrypt — уведомления о проблемах с сертификатом
 	email {$ACME_EMAIL:admin@localhost}
+	# За другим прокси (Traefik в Dokploy) — верить его X-Forwarded-For и X-Forwarded-Proto.
+	# Из интернета приходят публичные адреса, им не верим.
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 {$DOMAIN} {

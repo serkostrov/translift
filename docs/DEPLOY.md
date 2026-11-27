@@ -77,6 +77,20 @@ docker compose --env-file .env exec backend npx prisma db seed
    - Удалите значение `SEED_ADMIN_PASSWORD` из `.env`.
    - В **Справочниках** заведите пользователей, бригады и договоры. Объекты можно загрузить из Excel на странице «Отчёты».
 
+## Установка через Dokploy
+
+Если на сервере уже стоит Dokploy (порты 80/443 занимает его Traefik), используйте `deploy/docker-compose.dokploy.yml`: в нём Caddy работает без HTTPS и без открытых портов, сертификат выпускает Traefik.
+
+1. В Dokploy: **Create Project** → **Create Service** → **Compose**.
+2. **General → Provider → Git**: репозиторий `https://github.com/serkostrov/translift.git`, ветка `main`, Compose Path `./deploy/docker-compose.dokploy.yml`.
+3. **Domains → Add Domain**: сервис `web`, порт `80`, HTTPS, Let's Encrypt. Без своего домена подойдёт `имя-89-111-154-253.sslip.io`.
+4. **Environment**: те же переменные, что в `deploy/.env.example`, кроме `DOMAIN`, `ACME_EMAIL` и портов. `PUBLIC_URL` — адрес из шага 3 с `https://`.
+5. **Deploy**. Затем шаблоны этапов и администратор — в терминале сервера:
+
+```bash
+docker exec $(docker ps -qf name=translift-app.*-backend) npx prisma db seed
+```
+
 ## Проверка
 
 ```bash

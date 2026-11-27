@@ -8,7 +8,9 @@ import type { Env } from './common/config/env.js';
 export function setupApp(app: NestExpressApplication) {
   const config = app.get<ConfigService<Env, true>>(ConfigService);
   app.setGlobalPrefix('api');
-  app.set('trust proxy', 1);
+  // Прокси во внутренней сети (Caddy, а в Dokploy ещё и Traefik перед ним) — доверенные:
+  // настоящий IP пользователя для лимита попыток входа и https для secure-cookie
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
   app.use(cookieParser());
   app.useGlobalPipes(new StandardSchemaValidationPipe());
   app.enableCors({ origin: config.get('FRONTEND_ORIGIN'), credentials: true });
