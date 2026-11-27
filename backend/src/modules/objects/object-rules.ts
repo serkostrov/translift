@@ -104,3 +104,51 @@ export function evaluateObject(input: RulesInput): RulesResult {
     isRisk: flags.some((f) => f.level === 'danger'),
   };
 }
+
+const STATE_ORDER: ObjectState[] = ['NOT_STARTED', 'IN_PROGRESS', 'HANDOVER', 'DONE'];
+
+export type LiftResult = RulesResult & { label: string; lastMarkDate: string | null };
+
+/**
+ * Сводка объекта по лифтам. Процент — средний; состояние и текущий этап — по самому
+ * отстающему лифту (но если хоть один начат, объект «в работе», а не «не начат»);
+ * флаги — все, у флага, который есть не у всех лифтов, в скобках перечислены лифты.
+ */
+export function combineLifts(lifts: LiftResult[]) {
+  if (lifts.length === 0) throw new Error('У объекта нет лифтов');
+  const [single] = lifts;
+  if (lifts.length === 1) return single;
+
+  const slowest = lifts.reduce((a, b) => (b.percent < a.percent ? b : a));
+  const minState = Math.min(...lifts.map((l) => STATE_ORDER.indexOf(l.state)));
+  const anyStarted = lifts.some((l) => l.state !== 'NOT_STARTED');
+  const state =
+    minState === 0 && anyStarted ? 'IN_PROGRESS' : (STATE_ORDER[minState] as ObjectState);
+
+  const byCode = new Map<string, { flag: ObjectFlag; labels: string[] }>();
+  for (const l of lifts) {
+    for (const f of l.flags) {
+      const entry = byCode.get(f.code) ?? { flag: f, labels: [] };
+      entry.labels.push(l.label);
+      byCode.set(f.code, entry);
+    }
+  }
+  const flags: ObjectFlag[] = [...byCode.values()].map(({ flag, labels }) => ({
+    ...flag,
+    // Просрочка и «нет отметок N дн.» у разных лифтов различаются текстом — берём общий
+    text:
+      labels.length === lifts.length
+        ? flag.text
+        : `${flag.code === 'STALE' ? 'Нет отметок' : flag.text} (${labels.join(', ')})`,
+  }));
+  const lastMarks = lifts.map((l) => l.lastMarkDate).filter((d): d is string => d !== null);
+
+  return {
+    ...slowest,
+    percent: Math.round(lifts.reduce((s, l) => s + l.percent, 0) / lifts.length),
+    state,
+    flags,
+    isRisk: flags.some((f) => f.level === 'danger'),
+    lastMarkDate: lastMarks.sort().at(-1) ?? null,
+  };
+}

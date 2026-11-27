@@ -1,9 +1,12 @@
 import {
   DELIVERY_LABELS,
+  type LiftDetails,
+  liftLabel,
   type MarkDto,
   type ObjectDetails,
   planControlDates,
   planStages,
+  WORK_TYPE_LABELS,
 } from '@contracts';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
@@ -52,25 +55,31 @@ export function PlanDelta({
   );
 }
 
-/** План этапов объекта: id этапа → плановая дата. */
-export function useStagePlan(o: ObjectDetails) {
+/** План этапов лифта: id этапа → плановая дата. */
+export function useStagePlan(lift: LiftDetails) {
   const templates = useTemplates();
-  const stages = templates.data?.find((t) => t.id === o.templateId)?.stages ?? [];
-  const plan = planStages(stages, o.plannedStartDate);
+  const stages = templates.data?.find((t) => t.id === lift.templateId)?.stages ?? [];
+  const plan = planStages(stages, lift.plannedStartDate);
   return { stages, plan, control: planControlDates(stages, plan) };
 }
 
 type DateRow = { label: string; plan: string | null | undefined; fact: string | null };
 
-/** «Сведения»: сведения об объекте, ключевые даты и график этапов — план и факт рядом. */
-export function InfoCard({ object: o }: { object: ObjectDetails }) {
-  const marks = useMarks(o.id);
-  const { stages, plan, control } = useStagePlan(o);
+/**
+ * «Сведения»: сведения об объекте, ключевые даты и график этапов лифта — план и факт рядом.
+ * Без выбранного лифта (вкладка «Все» у объекта с несколькими лифтами) — общее и список лифтов.
+ */
+export function InfoCard({
+  object: o,
+  lift,
+  onSelectLift,
+}: {
+  object: ObjectDetails;
+  lift: LiftDetails | null;
+  onSelectLift: (id: string) => void;
+}) {
   // Страница договора — для офиса; бригадиру просто номер
   const office = !hasRole(useCurrentUser(), 'FOREMAN');
-  const markByStage = new Map<string, MarkDto>((marks.data ?? []).map((m) => [m.stage.id, m]));
-  const lastStage = stages.at(-1);
-
   const info: [string, ReactNode][] = [
     ['Короткий адрес', o.shortAddress],
     [
@@ -83,28 +92,22 @@ export function InfoCard({ object: o }: { object: ObjectDetails }) {
         (o.contract?.number ?? '—')
       ),
     ],
-    ['Сведения о лифте', o.liftInfo ?? '—'],
-    ['Поставка оборудования', DELIVERY_LABELS[o.deliveryStatus]],
     ['Срок по договору', formatDate(o.deadline)],
+    ['Бригада объекта', o.brigade?.name ?? 'не назначена'],
   ];
-
-  const dates: DateRow[] = [
-    { label: 'Поставка оборудования', plan: o.deliveryPlannedDate, fact: o.deliveryActualDate },
-    { label: 'Начало работ (открытие)', plan: o.plannedStartDate, fact: o.openedDate },
-    { label: 'ПТО', plan: control.ptoDate, fact: o.ptoDate },
-    { label: 'Декларация', plan: control.declarationDate, fact: o.declarationDate },
-    { label: 'Ввод в эксплуатацию', plan: control.commissionedDate, fact: o.commissionedDate },
-    { label: 'Комиссионная приёмка', plan: control.acceptanceDate, fact: o.acceptanceDate },
-    { label: 'КС-2, КС-3', plan: control.ksDate, fact: o.ksDate },
-    {
-      label: 'Окончание работ',
-      plan: lastStage ? plan.get(lastStage.id) : null,
-      fact:
-        lastStage && markByStage.get(lastStage.id)?.performedAt
-          ? dayOf(markByStage.get(lastStage.id)?.performedAt as string)
-          : null,
-    },
-  ];
+  if (lift) {
+    if (o.lifts.length > 1) info.push(['Лифт', liftLabel(lift)]);
+    info.push(
+      ['Тип работ', WORK_TYPE_LABELS[lift.workType]],
+      [
+        'Этажность / грузоподъёмность',
+        `${lift.floors ?? '—'} эт. / ${lift.capacityKg ? `${lift.capacityKg} кг` : '—'}`,
+      ],
+      ['Сведения о лифте', lift.liftInfo ?? '—'],
+      ['Поставка оборудования', DELIVERY_LABELS[lift.deliveryStatus]],
+    );
+    if (lift.ownBrigade) info.push(['Бригада лифта', lift.brigade?.name ?? '—']);
+  }
 
   return (
     <div className="space-y-4">
@@ -120,7 +123,73 @@ export function InfoCard({ object: o }: { object: ObjectDetails }) {
           </dl>
         </CardContent>
       </Card>
+      {lift ? (
+        <LiftDates objectId={o.id} lift={lift} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Лифты</CardTitle>
+            <CardDescription>Даты и график этапов — на вкладке лифта</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DataList
+              rows={o.lifts}
+              rowKey={(l) => l.id}
+              onRowClick={(l) => onSelectLift(l.id)}
+              columns={[
+                { key: 'name', header: 'Лифт', mobile: 'title', cell: (l) => liftLabel(l) },
+                {
+                  key: 'kind',
+                  header: 'Тип, этажность',
+                  cell: (l) =>
+                    `${WORK_TYPE_LABELS[l.workType]}, ${l.floors ?? '—'} эт.${l.capacityKg ? `, ${l.capacityKg} кг` : ''}`,
+                },
+                { key: 'brigade', header: 'Бригада', cell: (l) => l.brigade?.name ?? '—' },
+                {
+                  key: 'stage',
+                  header: 'Этап',
+                  cell: (l) => `${l.percent}% · ${l.currentStage?.shortName ?? 'не начат'}`,
+                },
+                {
+                  key: 'delivery',
+                  header: 'Поставка',
+                  cell: (l) => DELIVERY_LABELS[l.deliveryStatus],
+                },
+              ]}
+            />
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
 
+/** Даты лифта (план и факт) и график его этапов. */
+function LiftDates({ objectId, lift }: { objectId: string; lift: LiftDetails }) {
+  const marks = useMarks(objectId);
+  const { stages, plan, control } = useStagePlan(lift);
+  const markByStage = new Map<string, MarkDto>(
+    (marks.data ?? []).filter((m) => m.liftId === lift.id).map((m) => [m.stage.id, m]),
+  );
+  const lastStage = stages.at(-1);
+  const o = lift;
+  const lastMark = lastStage ? markByStage.get(lastStage.id) : undefined;
+  const dates: DateRow[] = [
+    { label: 'Поставка оборудования', plan: o.deliveryPlannedDate, fact: o.deliveryActualDate },
+    { label: 'Начало работ (открытие)', plan: o.plannedStartDate, fact: o.openedDate },
+    { label: 'ПТО', plan: control.ptoDate, fact: o.ptoDate },
+    { label: 'Декларация', plan: control.declarationDate, fact: o.declarationDate },
+    { label: 'Ввод в эксплуатацию', plan: control.commissionedDate, fact: o.commissionedDate },
+    { label: 'Комиссионная приёмка', plan: control.acceptanceDate, fact: o.acceptanceDate },
+    { label: 'КС-2, КС-3', plan: control.ksDate, fact: o.ksDate },
+    {
+      label: 'Окончание работ',
+      plan: lastStage ? plan.get(lastStage.id) : null,
+      fact: lastMark ? dayOf(lastMark.performedAt) : null,
+    },
+  ];
+  return (
+    <>
       <Card>
         <CardHeader>
           <CardTitle>Даты: план и факт</CardTitle>
@@ -183,7 +252,7 @@ export function InfoCard({ object: o }: { object: ObjectDetails }) {
           />
         </CardContent>
       </Card>
-    </div>
+    </>
   );
 }
 

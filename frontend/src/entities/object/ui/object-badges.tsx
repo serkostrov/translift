@@ -1,4 +1,10 @@
-import { OBJECT_STATE_LABELS, type ObjectFlag, type ObjectListItem } from '@contracts';
+import {
+  type LiftSummary,
+  liftLabel,
+  OBJECT_STATE_LABELS,
+  type ObjectFlag,
+  type ObjectListItem,
+} from '@contracts';
 import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/badge';
 
@@ -33,19 +39,69 @@ export function FlagBadge({ flag }: { flag: ObjectFlag }) {
   );
 }
 
-/** Полоска из сегментов по числу этапов: заполнено до текущего. */
-export function StageSegments({ object }: { object: ObjectListItem }) {
-  const done = object.currentStage?.order ?? 0;
+type Progress = Pick<LiftSummary, 'currentStage' | 'stagesTotal' | 'percent' | 'state' | 'isRisk'>;
+
+function Segments({ item, compact }: { item: Progress; compact?: boolean }) {
+  const done = item.currentStage?.order ?? 0;
   const color =
-    object.state === 'DONE' ? 'bg-emerald-500' : object.isRisk ? 'bg-red-500' : 'bg-primary';
+    item.state === 'DONE' ? 'bg-emerald-500' : item.isRisk ? 'bg-red-500' : 'bg-primary';
+  return (
+    <div className="flex gap-px" role="img" aria-label={`Выполнено ${item.percent}%`}>
+      {Array.from({ length: item.stagesTotal }, (_, i) => (
+        <i
+          // biome-ignore lint/suspicious/noArrayIndexKey: сегменты без собственных id
+          key={i}
+          className={cn(
+            'rounded-[1px]',
+            compact ? 'h-2 w-1' : 'h-2.5 w-1.5',
+            i < done ? color : 'bg-muted',
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Сколько лифтов показываем в строке списка; остальные — «+N». */
+const LIFTS_SHOWN = 4;
+
+/** Прогресс каждого лифта объекта — компактно, строкой на лифт. */
+export function LiftBars({ lifts }: { lifts: LiftSummary[] }) {
+  const shown = lifts.slice(0, LIFTS_SHOWN);
+  return (
+    <div className="space-y-0.5">
+      {shown.map((l) => (
+        <div key={l.id} className="flex items-center gap-2 text-xs">
+          <span className="w-24 truncate text-muted-foreground" title={liftLabel(l)}>
+            {liftLabel(l)}
+          </span>
+          <Segments item={{ ...l, isRisk: l.isRisk }} compact />
+          <span className="tabular-nums font-medium">{l.percent}%</span>
+        </div>
+      ))}
+      {lifts.length > LIFTS_SHOWN && (
+        <div className="text-xs text-muted-foreground">
+          ещё {lifts.length - LIFTS_SHOWN} — средний{' '}
+          {Math.round(
+            lifts.slice(LIFTS_SHOWN).reduce((s, l) => s + l.percent, 0) /
+              (lifts.length - LIFTS_SHOWN),
+          )}
+          %
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Полоска из сегментов по числу этапов: заполнено до текущего.
+ * У объекта с несколькими лифтами — по полоске на каждый лифт.
+ */
+export function StageSegments({ object }: { object: ObjectListItem }) {
+  if (object.lifts.length > 1) return <LiftBars lifts={object.lifts} />;
   return (
     <div className="flex items-center gap-2">
-      <div className="flex gap-px" role="img" aria-label={`Выполнено ${object.percent}%`}>
-        {Array.from({ length: object.stagesTotal }, (_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: сегменты без собственных id
-          <i key={i} className={cn('h-2.5 w-1.5 rounded-[1px]', i < done ? color : 'bg-muted')} />
-        ))}
-      </div>
+      <Segments item={object} />
       <span className="tabular-nums text-sm font-medium">{object.percent}%</span>
     </div>
   );

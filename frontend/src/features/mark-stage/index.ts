@@ -1,1 +1,1 @@
-export { MarkStageDialog } from './ui/mark-stage-dialog';
+export { MarkStageDialog, markableLifts } from './ui/mark-stage-dialog';

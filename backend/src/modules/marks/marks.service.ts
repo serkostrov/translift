@@ -29,6 +29,7 @@ type MarkRow = Prisma.StageMarkGetPayload<{ include: typeof markInclude }>;
 
 const toDto = (m: MarkRow): MarkDto => ({
   id: m.id,
+  liftId: m.liftId,
   stage: m.stage,
   performedAt: m.performedAt.toISOString(),
   author: m.author,
@@ -65,21 +66,24 @@ export class MarksService {
    * отмечаются той же датой автоматически (как в демо: «отмечен вместе со следующим»).
    */
   async create(objectId: string, body: MarkCreate, user: SessionUser) {
-    const access = await this.objects.ensureAccess(objectId, user);
-    if (access.archivedAt) throw new BadRequestException('Объект в архиве');
+    const access = await this.objects.ensureLift(objectId, body.liftId, user);
+    if (access.object.archivedAt) throw new BadRequestException('Объект в архиве');
+    const liftId = access.lift.id;
+    // Название лифта в журнале и уведомлениях — только когда лифтов несколько
+    const liftName = access.lift.name || null;
 
-    const object = await this.prisma.liftObject.findUniqueOrThrow({
-      where: { id: objectId },
+    const lift = await this.prisma.lift.findUniqueOrThrow({
+      where: { id: liftId },
       include: {
         template: { include: { stages: { orderBy: { order: 'asc' } } } },
         currentStage: true,
         marks: { where: { revokedAt: null }, orderBy: { performedAt: 'desc' }, take: 1 },
       },
     });
-    const stages = object.template.stages;
+    const stages = lift.template.stages;
     const target = stages.find((s) => s.id === body.stageId);
-    if (!target) throw new BadRequestException('Этап не из шаблона этого объекта');
-    const currentOrder = object.currentStage?.order ?? 0;
+    if (!target) throw new BadRequestException('Этап не из шаблона этого лифта');
+    const currentOrder = lift.currentStage?.order ?? 0;
     if (target.order <= currentOrder) throw new BadRequestException('Этот этап уже отмечен');
 
     // Дата: сегодня или до MARK_BACKDATE_DAYS дней назад, не раньше прошлой отметки
@@ -93,7 +97,7 @@ export class MarksService {
       );
     }
     const performedAt = date === today ? new Date() : new Date(`${date}T09:00:00Z`);
-    const lastMark = object.marks[0]?.performedAt;
+    const lastMark = lift.marks[0]?.performedAt;
     if (lastMark && performedAt < lastMark) {
       throw new BadRequestException('Дата раньше предыдущей отметки');
     }
@@ -114,21 +118,21 @@ export class MarksService {
 
     const crossed = stages.filter((s) => s.order > currentOrder && s.order <= target.order);
     const dateValue = new Date(`${date}T00:00:00Z`);
-    const objectData: Prisma.LiftObjectUncheckedUpdateManyInput = { currentStageId: target.id };
-    if (!object.openedDate) objectData.openedDate = dateValue;
+    const liftData: Prisma.LiftUncheckedUpdateManyInput = { currentStageId: target.id };
+    if (!lift.openedDate) liftData.openedDate = dateValue;
     for (const s of crossed) {
       for (const field of s.setsDate ? CONTROL_DATE_FIELDS[s.setsDate] : []) {
-        if (!object[field as keyof typeof object]) {
-          (objectData as Record<string, unknown>)[field] = dateValue;
+        if (!lift[field as keyof typeof lift]) {
+          (liftData as Record<string, unknown>)[field] = dateValue;
         }
       }
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // Оптимистичная блокировка: если объект отметили параллельно — 409
-      const { count } = await tx.liftObject.updateMany({
-        where: { id: objectId, currentStageId: object.currentStageId },
-        data: objectData,
+      // Оптимистичная блокировка: если лифт отметили параллельно — 409
+      const { count } = await tx.lift.updateMany({
+        where: { id: liftId, currentStageId: lift.currentStageId },
+        data: liftData,
       });
       if (count === 0)
         throw new ConflictException('Объект только что изменили — обновите страницу');
@@ -138,6 +142,7 @@ export class MarksService {
         const mark = await tx.stageMark.create({
           data: {
             objectId,
+            liftId,
             stageId: s.id,
             performedAt,
             authorId: user.id,
@@ -153,7 +158,10 @@ export class MarksService {
         }
       }
 
-      const text = `${object.shortAddress}: этап «${target.shortName}» — ${target.percent}%`;
+      const where = liftName
+        ? `${access.object.shortAddress}, ${liftName}`
+        : access.object.shortAddress;
+      const text = `${where}: этап «${target.shortName}» — ${target.percent}%`;
       await this.audit.log(
         {
           userId: user.id,
@@ -162,9 +170,10 @@ export class MarksService {
           objectId,
           action: 'mark',
           changes: {
-            stage: [object.currentStage?.shortName ?? null, target.shortName],
-            percent: [object.currentStage?.percent ?? 0, target.percent],
+            stage: [lift.currentStage?.shortName ?? null, target.shortName],
+            percent: [lift.currentStage?.percent ?? 0, target.percent],
             photos: photoIds.length,
+            ...(liftName ? { lift: [null, liftName] } : {}),
           },
         },
         tx,
@@ -184,10 +193,10 @@ export class MarksService {
   }
 
   /** Отмена последней отметки: объект возвращается на предыдущий этап. Даты не трогаем. */
-  async revokeLast(objectId: string, user: SessionUser) {
-    await this.objects.ensureAccess(objectId, user);
+  async revokeLast(objectId: string, liftId: string | undefined, user: SessionUser) {
+    const { lift } = await this.objects.ensureLift(objectId, liftId, user);
     const marks = await this.prisma.stageMark.findMany({
-      where: { objectId, revokedAt: null },
+      where: { liftId: lift.id, revokedAt: null },
       include: { stage: true },
     });
     if (!marks.length) throw new NotFoundException('Отметок нет');
@@ -196,8 +205,8 @@ export class MarksService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.stageMark.update({ where: { id: last.id }, data: { revokedAt: new Date() } });
-      await tx.liftObject.update({
-        where: { id: objectId },
+      await tx.lift.update({
+        where: { id: lift.id },
         data: { currentStageId: prev?.stageId ?? null },
       });
       await this.audit.log(
@@ -207,7 +216,10 @@ export class MarksService {
           entityId: objectId,
           objectId,
           action: 'revoke',
-          changes: { stage: [last.stage.shortName, prev?.stage.shortName ?? null] },
+          changes: {
+            stage: [last.stage.shortName, prev?.stage.shortName ?? null],
+            ...(lift.name ? { lift: [null, lift.name] } : {}),
+          },
         },
         tx,
       );

@@ -11,7 +11,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { z } from 'zod';
-import { useCreateObject, useUpdateObject } from '@/entities/object';
+import { useCreateObject, useUpdateLift, useUpdateObject } from '@/entities/object';
 import { BrigadeDialog, ContractDialog, useBrigades, useContracts } from '@/entities/refs';
 import { hasRole, useCurrentUser } from '@/entities/session';
 import { errorMessage } from '@/shared/api/http';
@@ -51,25 +51,34 @@ type Props = { object?: ObjectDetails; trigger: ReactNode };
  * иначе после сохранения форма показывала бы старые договор и бригаду.
  * Договор новому объекту не подставляем — выбирают явно, чтобы не привязать не тот.
  */
-const valuesOf = (object?: ObjectDetails): FormInput => ({
-  address: object?.address ?? '',
-  shortAddress: object?.shortAddress ?? '',
-  floors: object?.floors ?? 9,
-  capacityKg: object?.capacityKg ?? 400,
-  liftInfo: object?.liftInfo ?? '',
-  workType: object?.workType ?? 'REPLACEMENT',
-  contractId: object?.contract?.id ?? null,
-  brigadeId: object?.brigade?.id ?? null,
-  deadline: object?.deadline ?? null,
-  plannedStartDate: object?.plannedStartDate ?? null,
-});
+const valuesOf = (object?: ObjectDetails): FormInput => {
+  const lift = object?.lifts[0];
+  return {
+    address: object?.address ?? '',
+    shortAddress: object?.shortAddress ?? '',
+    floors: lift ? lift.floors : 9,
+    capacityKg: lift ? lift.capacityKg : 400,
+    liftInfo: lift?.liftInfo ?? '',
+    workType: lift?.workType ?? 'REPLACEMENT',
+    contractId: object?.contract?.id ?? null,
+    brigadeId: object?.brigade?.id ?? null,
+    deadline: object?.deadline ?? null,
+    plannedStartDate: lift?.plannedStartDate ?? null,
+  };
+};
 
-/** Создание и редактирование объекта. */
+/**
+ * Создание и редактирование объекта. Пока лифт один, характеристики лифта правятся здесь же;
+ * у объекта с несколькими лифтами форма — только про общее (адрес, договор, срок, бригада).
+ */
 export function ObjectFormDialog({ object, trigger }: Props) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const create = useCreateObject();
   const update = useUpdateObject(object?.id ?? '');
+  const updateLift = useUpdateLift(object?.id ?? '');
+  // Характеристики лифта в форме — при создании и пока лифт в объекте один
+  const singleLift = !object || object.lifts.length === 1;
   const brigades = useBrigades();
   const contracts = useContracts();
   const user = useCurrentUser();
@@ -84,8 +93,15 @@ export function ObjectFormDialog({ object, trigger }: Props) {
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       if (object) {
-        const { workType: _ignored, ...rest } = values;
-        await update.mutateAsync(rest);
+        const { address, shortAddress, contractId, brigadeId, deadline } = values;
+        await update.mutateAsync({ address, shortAddress, contractId, brigadeId, deadline });
+        if (singleLift) {
+          const { floors, capacityKg, liftInfo, plannedStartDate } = values;
+          await updateLift.mutateAsync({
+            liftId: object.lifts[0].id,
+            body: { floors, capacityKg, liftInfo, plannedStartDate },
+          });
+        }
         toast.success('Объект сохранён');
       } else {
         const created = await create.mutateAsync(values);
@@ -165,33 +181,42 @@ export function ObjectFormDialog({ object, trigger }: Props) {
               <FieldError errors={[errors.shortAddress]} />
             </Field>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field data-invalid={!!errors.floors}>
-                <FieldLabel htmlFor="floors">Этажность</FieldLabel>
-                <Input id="floors" type="number" inputMode="numeric" {...form.register('floors')} />
-                <FieldError errors={[errors.floors]} />
-              </Field>
-              <Field data-invalid={!!errors.capacityKg}>
-                <FieldLabel htmlFor="capacityKg">Грузоподъёмность, кг</FieldLabel>
-                <Input
-                  id="capacityKg"
-                  type="number"
-                  inputMode="numeric"
-                  {...form.register('capacityKg')}
-                />
-                <FieldError errors={[errors.capacityKg]} />
-              </Field>
-            </div>
+            {singleLift && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field data-invalid={!!errors.floors}>
+                    <FieldLabel htmlFor="floors">Этажность</FieldLabel>
+                    <Input
+                      id="floors"
+                      type="number"
+                      inputMode="numeric"
+                      {...form.register('floors')}
+                    />
+                    <FieldError errors={[errors.floors]} />
+                  </Field>
+                  <Field data-invalid={!!errors.capacityKg}>
+                    <FieldLabel htmlFor="capacityKg">Грузоподъёмность, кг</FieldLabel>
+                    <Input
+                      id="capacityKg"
+                      type="number"
+                      inputMode="numeric"
+                      {...form.register('capacityKg')}
+                    />
+                    <FieldError errors={[errors.capacityKg]} />
+                  </Field>
+                </div>
 
-            <Field>
-              <FieldLabel htmlFor="liftInfo">Сведения о лифте</FieldLabel>
-              <Textarea
-                id="liftInfo"
-                rows={2}
-                placeholder="Модель, завод, заводской номер"
-                {...form.register('liftInfo')}
-              />
-            </Field>
+                <Field>
+                  <FieldLabel htmlFor="liftInfo">Сведения о лифте</FieldLabel>
+                  <Textarea
+                    id="liftInfo"
+                    rows={2}
+                    placeholder="Модель, завод, заводской номер"
+                    {...form.register('liftInfo')}
+                  />
+                </Field>
+              </>
+            )}
 
             <Field>
               <FieldLabel htmlFor="contractId">Договор</FieldLabel>
@@ -218,15 +243,17 @@ export function ObjectFormDialog({ object, trigger }: Props) {
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field data-invalid={!!errors.plannedStartDate}>
-                <FieldLabel htmlFor="plannedStartDate">Начало работ</FieldLabel>
-                <Input
-                  id="plannedStartDate"
-                  type="date"
-                  {...form.register('plannedStartDate', { setValueAs: (v) => v || null })}
-                />
-                <FieldError errors={[errors.plannedStartDate]} />
-              </Field>
+              {singleLift && (
+                <Field data-invalid={!!errors.plannedStartDate}>
+                  <FieldLabel htmlFor="plannedStartDate">Начало работ</FieldLabel>
+                  <Input
+                    id="plannedStartDate"
+                    type="date"
+                    {...form.register('plannedStartDate', { setValueAs: (v) => v || null })}
+                  />
+                  <FieldError errors={[errors.plannedStartDate]} />
+                </Field>
+              )}
               <Field data-invalid={!!errors.deadline}>
                 <FieldLabel htmlFor="deadline">Срок по договору</FieldLabel>
                 <Input
@@ -237,8 +264,9 @@ export function ObjectFormDialog({ object, trigger }: Props) {
                 <FieldError errors={[errors.deadline]} />
               </Field>
               <FieldDescription className="col-span-2 -mt-1">
-                От начала работ по плановым дням этапов считаются плановые даты — их видно в «Ходе
-                работ» и «Сведениях».
+                {singleLift
+                  ? 'От начала работ по плановым дням этапов считаются плановые даты — их видно в «Ходе работ» и «Сведениях».'
+                  : 'Характеристики и начало работ — у каждого лифта свои: «Изменить лифт» на его вкладке.'}
               </FieldDescription>
             </div>
 

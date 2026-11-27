@@ -204,11 +204,15 @@ export function ObjectsPage() {
                         {o.shortAddress}
                       </Link>
                       <div className="text-xs text-muted-foreground">
-                        {WORK_TYPE_LABELS[o.workType]}
+                        {o.lifts.length > 1
+                          ? `Лифтов: ${o.lifts.length}`
+                          : WORK_TYPE_LABELS[o.workType]}
                       </div>
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {o.floors ?? '—'} / {o.capacityKg ? `${o.capacityKg} кг` : '—'}
+                      {o.lifts.length > 1
+                        ? '—'
+                        : `${o.floors ?? '—'} / ${o.capacityKg ? `${o.capacityKg} кг` : '—'}`}
                     </TableCell>
                     <TableCell>
                       {o.brigade?.name ?? (
@@ -218,7 +222,7 @@ export function ObjectsPage() {
                       )}
                     </TableCell>
                     <TableCell className="max-w-48 whitespace-normal">
-                      {o.currentStage?.shortName ?? 'Не начат'}
+                      {o.lifts.length > 1 ? '—' : (o.currentStage?.shortName ?? 'Не начат')}
                     </TableCell>
                     <TableCell>
                       <StageSegments object={o} />
@@ -270,7 +274,10 @@ function ObjectCard({ object: o }: { object: ObjectListItem }) {
         </div>
         <StageSegments object={o} />
         <div className="text-sm text-muted-foreground">
-          {o.currentStage?.shortName ?? 'Этапы не отмечены'} · {o.brigade?.name ?? 'без бригады'}
+          {o.lifts.length > 1
+            ? `Лифтов: ${o.lifts.length}`
+            : (o.currentStage?.shortName ?? 'Этапы не отмечены')}{' '}
+          · {o.brigade?.name ?? 'без бригады'}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted-foreground">Срок {formatDate(o.deadline)}</span>

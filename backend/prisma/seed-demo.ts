@@ -176,15 +176,19 @@ async function main() {
       data: {
         address,
         shortAddress,
-        floors,
-        capacityKg,
-        templateId: template.id,
         contractId: contract.id,
         brigadeId: brigade === null ? null : brigades[brigade].id,
         deadline: day(deadline),
-        openedDate: opened === null ? null : day(opened),
-        currentStageId: stage ? template.stages[stage - 1].id : null,
-        deliveryStatus: stage ? 'DELIVERED' : 'NOT_ORDERED',
+        lifts: {
+          create: {
+            floors,
+            capacityKg,
+            templateId: template.id,
+            openedDate: opened === null ? null : day(opened),
+            currentStageId: stage ? template.stages[stage - 1].id : null,
+            deliveryStatus: stage ? 'DELIVERED' : 'NOT_ORDERED',
+          },
+        },
       },
     });
   }

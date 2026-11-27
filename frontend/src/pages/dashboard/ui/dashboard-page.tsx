@@ -1,8 +1,8 @@
-import type { DashboardDto, ObjectListItem } from '@contracts';
+import { type DashboardDto, liftLabel, type ObjectListItem } from '@contracts';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { PhotoThumbs } from '@/entities/mark';
-import { FlagBadge } from '@/entities/object';
+import { FlagBadge, LiftBars } from '@/entities/object';
 import { http } from '@/shared/api/http';
 import { formatDate, formatDateTime, plural } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/utils';
@@ -91,6 +91,11 @@ export function DashboardPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">{o.shortAddress}</div>
+                    {o.lifts.length > 1 && (
+                      <div className="mt-1">
+                        <LiftBars lifts={o.lifts} />
+                      </div>
+                    )}
                     <div className="mt-1 flex flex-wrap gap-1">
                       {o.flags.map((f) => (
                         <FlagBadge key={f.code} flag={f} />
@@ -173,6 +178,7 @@ export function DashboardPage() {
                     {m.author} ·{' '}
                     <Link to={`/objects/${m.object.id}`} className="hover:underline">
                       {m.object.shortAddress}
+                      {m.lift && `, ${m.lift}`}
                     </Link>
                   </div>
                   {m.comment && <p className="text-sm">{m.comment}</p>}
@@ -186,7 +192,9 @@ export function DashboardPage() {
                     photos={m.photos}
                     size="sm"
                     direction="column"
-                    caption={() => `${m.stage}, ${m.object.shortAddress}`}
+                    caption={() =>
+                      `${m.stage}, ${m.object.shortAddress}${m.lift ? `, ${m.lift}` : ''}`
+                    }
                   />
                 </div>
               </div>
@@ -227,26 +235,74 @@ function Kpi({
   );
 }
 
-/** Мини-шахта: кабина на высоте процента готовности. */
+/** Шахта: кабина на высоте процента готовности. */
+function Cabin({
+  percent,
+  done,
+  risk,
+  narrow,
+}: {
+  percent: number;
+  done: boolean;
+  risk: boolean;
+  narrow?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'relative h-28 rounded-sm border-2 border-muted-foreground/30 bg-muted/50',
+        narrow ? 'w-5' : 'w-8',
+      )}
+    >
+      <div
+        className={cn(
+          'absolute inset-x-0.5 h-3 rounded-[2px] transition-[bottom]',
+          done ? 'bg-emerald-500' : risk ? 'bg-red-500' : 'bg-primary',
+        )}
+        style={{ bottom: `calc(${percent / 100} * (100% - 14px) + 1px)` }}
+      />
+    </div>
+  );
+}
+
+/**
+ * Мини-шахта объекта. У объекта с несколькими лифтами — одним блоком несколько шахт рядом:
+ * видно и дом целиком, и какой лифт отстаёт.
+ */
 function Shaft({ o }: { o: ObjectListItem }) {
   const done = o.state === 'DONE';
+  const multi = o.lifts.length > 1;
   return (
     <Link
       to={`/objects/${o.id}`}
-      title={o.shortAddress}
-      className="flex w-16 shrink-0 flex-col items-center gap-1 rounded-md p-1 hover:bg-muted"
+      title={
+        multi
+          ? `${o.shortAddress}\n${o.lifts.map((l) => `${liftLabel(l)} — ${l.percent}%`).join('\n')}`
+          : o.shortAddress
+      }
+      className={cn(
+        'flex shrink-0 flex-col items-center gap-1 rounded-md p-1 hover:bg-muted',
+        multi ? 'border border-dashed px-2' : 'w-16',
+      )}
     >
       <div className="text-xs font-medium tabular-nums">{o.percent}%</div>
-      <div className="relative h-28 w-8 rounded-sm border-2 border-muted-foreground/30 bg-muted/50">
-        <div
-          className={cn(
-            'absolute inset-x-0.5 h-3 rounded-[2px] transition-[bottom]',
-            done ? 'bg-emerald-500' : o.isRisk ? 'bg-red-500' : 'bg-primary',
-          )}
-          style={{ bottom: `calc(${o.percent / 100} * (100% - 14px) + 1px)` }}
-        />
-      </div>
-      <div className="w-full truncate text-center text-[11px] leading-tight">
+      {multi ? (
+        <div className="flex gap-1">
+          {o.lifts.map((l) => (
+            <Cabin
+              key={l.id}
+              percent={l.percent}
+              done={l.state === 'DONE'}
+              risk={l.isRisk}
+              narrow
+            />
+          ))}
+        </div>
+      ) : (
+        <Cabin percent={o.percent} done={done} risk={o.isRisk} />
+      )}
+      {/* Ширину блока задают шахты, подпись под ними обрезается (w-0 + min-w-full) */}
+      <div className="w-0 min-w-full truncate text-center text-[11px] leading-tight">
         {o.shortAddress.split(',')[0]}
       </div>
       <div

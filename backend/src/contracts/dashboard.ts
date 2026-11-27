@@ -26,6 +26,8 @@ export type DashboardDto = {
     performedAt: string;
     author: string;
     object: { id: string; shortAddress: string };
+    /** Название лифта; пусто — лифт в объекте один */
+    lift: string;
     stage: string;
     percent: number;
     comment: string | null;
@@ -93,6 +95,8 @@ export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
 
 export const claimCreateSchema = z.object({
   objectId: idSchema,
+  /** Лифт объекта; пусто — рекламация по объекту в целом */
+  liftId: idSchema.nullable().optional(),
   date: dateSchema,
   supplier: requiredText(300),
   kind: claimKindSchema,
@@ -120,6 +124,7 @@ export type ClaimDto = {
   id: string;
   number: number;
   object: { id: string; shortAddress: string };
+  lift: { id: string; name: string } | null;
   date: string;
   supplier: string;
   kind: ClaimKind;

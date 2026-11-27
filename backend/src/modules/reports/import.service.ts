@@ -65,6 +65,7 @@ const int = (v: ExcelJS.CellValue) => {
 const COLUMN_HINTS: Record<string, string[]> = {
   num: ['№'],
   address: ['адрес'],
+  lift: ['лифт'],
   floors: ['этажн'],
   capacity: ['грузоподъем'],
   deadline: ['срок'],
@@ -78,9 +79,13 @@ const COLUMN_HINTS: Record<string, string[]> = {
   ks: ['кс-2', 'кс 2'],
 };
 
+type KnownLift = { id: string; name: string; templateId: string };
+type KnownObject = { id: string; lifts: KnownLift[] };
+
 /**
  * Импорт объектов из Excel в формате отчёта генподрядчику (форма ФКР).
  * Существующие объекты (по совпадению адреса) обновляются, новые создаются.
+ * Строки с одним адресом и разными значениями в колонке «Лифт» — лифты одного объекта.
  * TODO(заказчик): подстроить под согласованный шаблон Excel заказчика.
  */
 @Injectable()
@@ -127,9 +132,15 @@ export class ImportService {
       include: { stages: { orderBy: { order: 'asc' } } },
     });
     const existing = await this.prisma.liftObject.findMany({
-      select: { id: true, address: true, currentStageId: true, templateId: true },
+      select: {
+        id: true,
+        address: true,
+        lifts: { select: { id: true, name: true, templateId: true } },
+      },
     });
-    const byAddress = new Map(existing.map((o) => [norm(o.address), o]));
+    const byAddress = new Map<string, KnownObject>(
+      existing.map((o) => [norm(o.address), { id: o.id, lifts: o.lifts }]),
+    );
 
     const results: ImportRowResult[] = [];
     // Данные начинаются после шапки; строку с номерами колонок «1 2 3…» пропускаем
@@ -148,6 +159,7 @@ export class ImportService {
       }
 
       const messages: string[] = [];
+      const liftName = text(get('lift'));
       const stageText = text(get('stage'));
       const percent = int(get('percent'));
       let stage = stageText
@@ -174,15 +186,40 @@ export class ImportService {
         ksDate: parseDate(get('ks')),
       };
       const found = byAddress.get(norm(address));
-      if (found && found.templateId !== template.id && stage) {
-        messages.push('Объект другого типа работ — этап не меняем');
+      // Лифт: по названию; без названия — единственный лифт объекта
+      let lift: KnownLift | undefined;
+      let renameLift = false;
+      if (found) {
+        lift = liftName
+          ? found.lifts.find((l) => norm(l.name) === norm(liftName))
+          : found.lifts.length === 1
+            ? found.lifts[0]
+            : undefined;
+        if (!lift && liftName && found.lifts.length === 1 && !found.lifts[0].name) {
+          // Единственный лифт без названия получает название из файла
+          lift = found.lifts[0];
+          renameLift = true;
+        }
+      }
+      if (found && !lift && !liftName) {
+        results.push({
+          row: r,
+          address,
+          action: 'error',
+          stage: null,
+          messages: ['В объекте несколько лифтов — укажите лифт в колонке «Лифт»'],
+        });
+        continue;
+      }
+      if (lift && lift.templateId !== template.id && stage) {
+        messages.push('Лифт другого типа работ — этап не меняем');
         stage = undefined;
       }
 
       const result: ImportRowResult = {
         row: r,
-        address,
-        action: found ? 'update' : 'create',
+        address: liftName ? `${address}, ${liftName}` : address,
+        action: lift ? 'update' : 'create',
         stage: stage ? `${stage.shortName} — ${stage.percent}%` : null,
         messages,
       };
@@ -191,12 +228,9 @@ export class ImportService {
 
       try {
         const toDate = (v: string | null) => (v ? new Date(`${v}T00:00:00Z`) : null);
-        const values = {
-          address: data.address,
-          shortAddress: data.shortAddress,
+        const liftValues = {
           floors: data.floors,
           capacityKg: data.capacityKg,
-          deadline: toDate(data.deadline),
           openedDate: toDate(data.openedDate),
           ptoDate: toDate(data.ptoDate),
           declarationDate: toDate(data.declarationDate),
@@ -204,36 +238,65 @@ export class ImportService {
           acceptanceDate: toDate(data.acceptanceDate),
           ksDate: toDate(data.ksDate),
         };
+        const deadline = toDate(data.deadline);
         // При обновлении пустые ячейки не затирают то, что уже есть в системе
-        const filled = Object.fromEntries(
-          Object.entries(values).filter(([k, v]) => v !== null && k !== 'shortAddress'),
-        );
+        const filled = Object.fromEntries(Object.entries(liftValues).filter(([, v]) => v !== null));
+        const newLift = {
+          ...liftValues,
+          name: liftName,
+          templateId: template.id,
+          currentStageId: stage?.id ?? null,
+          deliveryStatus: stage ? ('DELIVERED' as const) : ('NOT_ORDERED' as const),
+        };
+        let objectId: string;
         if (found) {
+          objectId = found.id;
           await this.prisma.liftObject.update({
             where: { id: found.id },
             data: {
-              ...filled,
-              ...(stage ? { currentStageId: stage.id } : {}),
+              ...(deadline ? { deadline } : {}),
               ...(options.contractId ? { contractId: options.contractId } : {}),
             },
           });
+          if (lift) {
+            await this.prisma.lift.update({
+              where: { id: lift.id },
+              data: {
+                ...filled,
+                ...(renameLift ? { name: liftName } : {}),
+                ...(stage ? { currentStageId: stage.id } : {}),
+              },
+            });
+            if (renameLift) lift.name = liftName;
+          } else {
+            const created = await this.prisma.lift.create({
+              data: {
+                ...newLift,
+                objectId: found.id,
+                position: found.lifts.length + 1,
+              },
+            });
+            found.lifts.push(created);
+          }
         } else {
           const created = await this.prisma.liftObject.create({
             data: {
-              ...values,
-              templateId: template.id,
+              address: data.address,
+              shortAddress: data.shortAddress,
+              deadline,
               contractId: options.contractId ?? null,
-              currentStageId: stage?.id ?? null,
-              deliveryStatus: stage ? 'DELIVERED' : 'NOT_ORDERED',
+              lifts: { create: newLift },
             },
+            include: { lifts: { select: { id: true, name: true, templateId: true } } },
           });
-          byAddress.set(norm(address), { ...created });
+          objectId = created.id;
+          byAddress.set(norm(address), { id: created.id, lifts: created.lifts });
         }
         await this.audit.log({
           userId: user.id,
           entity: 'object',
-          entityId: found?.id ?? 'import',
-          objectId: found?.id ?? byAddress.get(norm(address))?.id,
+          entityId: objectId,
+          objectId,
           action: 'import',
           changes: {
             text: `Импорт из Excel (строка ${r})${stage ? `: этап «${stage.shortName}»` : ''}`,

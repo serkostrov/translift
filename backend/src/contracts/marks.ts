@@ -57,10 +57,14 @@ export type FileDto = {
   /** Контекст — заполняется в списке файлов объекта (вкладка «Фото») */
   uploadedBy?: { id: string; fullName: string } | null;
   stage?: { order: number; shortName: string; markedAt: string } | null;
+  /** Лифт, к отметке которого относится фото */
+  liftId?: string | null;
   claim?: { id: string; number: number } | null;
 };
 
 export const markCreateSchema = z.object({
+  /** Лифт; можно не указывать, если лифт в объекте один */
+  liftId: idSchema.optional(),
   stageId: idSchema,
   /** Дата выполнения; пусто — сегодня */
   date: dateSchema.optional(),
@@ -69,8 +73,12 @@ export const markCreateSchema = z.object({
 });
 export type MarkCreate = z.input<typeof markCreateSchema>;
 
+/** Отмена последней отметки лифта */
+export const markRevokeQuerySchema = z.object({ liftId: idSchema.optional() });
+
 export type MarkDto = {
   id: string;
+  liftId: string;
   stage: { id: string; order: number; shortName: string; percent: number };
   performedAt: string;
   author: { id: string; fullName: string };

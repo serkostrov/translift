@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -28,6 +29,7 @@ import {
   claimPageQuerySchema,
   claimUpdateSchema,
   idSchema,
+  liftLabel,
   type Page,
   type SessionUser,
 } from '../../contracts/index.js';
@@ -37,6 +39,7 @@ import { ObjectsService } from '../objects/objects.service.js';
 
 const listInclude = {
   object: { select: { id: true, shortAddress: true } },
+  lift: { select: { id: true, name: true, position: true } },
   _count: { select: { comments: true, files: true } },
 } as const;
 type ClaimRow = Prisma.ClaimGetPayload<{ include: typeof listInclude }>;
@@ -45,6 +48,7 @@ const toDto = (c: ClaimRow): ClaimDto => ({
   id: c.id,
   number: c.number,
   object: c.object,
+  lift: c.lift ? { id: c.lift.id, name: liftLabel(c.lift) } : null,
   date: toDateString(c.date) as string,
   supplier: c.supplier,
   kind: c.kind,
@@ -75,7 +79,10 @@ export class ClaimsController {
         { object: { shortAddress: { contains: q.q, mode: 'insensitive' } } },
       ];
     }
-    if (user.role === 'FOREMAN') where.object = { brigadeId: user.brigadeId ?? '' };
+    if (user.role === 'FOREMAN') {
+      const brigadeId = user.brigadeId ?? '00000000-0000-0000-0000-000000000000';
+      where.object = { OR: [{ brigadeId }, { lifts: { some: { brigadeId } } }] };
+    }
     return where;
   }
 
@@ -138,7 +145,10 @@ export class ClaimsController {
     @Body({ schema: claimCreateSchema }) body: ClaimCreate,
     @CurrentUser() user: SessionUser,
   ): Promise<ClaimDetails> {
-    await this.objects.ensureAccess(body.objectId, user);
+    const obj = await this.objects.ensureAccess(body.objectId, user);
+    if (body.liftId && !obj.lifts.some((l) => l.id === body.liftId)) {
+      throw new BadRequestException('Лифт не из этого объекта');
+    }
     const claim = await this.prisma.$transaction(async (tx) => {
       const c = await tx.claim.create({
         data: { ...body, date: fromDateString(body.date) },
@@ -180,6 +190,12 @@ export class ClaimsController {
   ): Promise<ClaimDetails> {
     const before = await this.prisma.claim.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Рекламация не найдена');
+    if (body.liftId) {
+      const lift = await this.prisma.lift.findFirst({
+        where: { id: body.liftId, objectId: before.objectId },
+      });
+      if (!lift) throw new BadRequestException('Лифт не из этого объекта');
+    }
     const data = { ...body, date: fromDateString(body.date) };
     const changes = diff(before as unknown as Record<string, unknown>, data);
     await this.prisma.$transaction(async (tx) => {

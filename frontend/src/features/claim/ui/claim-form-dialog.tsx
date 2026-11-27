@@ -1,4 +1,11 @@
-import { CLAIM_KIND_LABELS, CLAIM_KINDS, type ClaimCreate, claimCreateSchema } from '@contracts';
+import {
+  CLAIM_KIND_LABELS,
+  CLAIM_KINDS,
+  type ClaimCreate,
+  claimCreateSchema,
+  type LiftSummary,
+  liftLabel,
+} from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { type ReactNode, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -27,11 +34,14 @@ type Props = {
   trigger: ReactNode;
   /** Объект задан заранее (из карточки объекта) */
   objectId?: string;
+  /** Лифты объекта, заданного заранее; выбранный лифт — liftId */
+  lifts?: LiftSummary[];
+  liftId?: string | null;
   onCreated?: (id: string) => void;
 };
 
 /** Новая рекламация: брак, недокомплект или несоответствие поставки. */
-export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
+export function ClaimFormDialog({ trigger, objectId, lifts: liftsProp, liftId, onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const create = useCreateClaim();
   const suppliers = useSuppliers();
@@ -40,6 +50,7 @@ export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
     resolver: zodResolver(claimCreateSchema),
     defaultValues: {
       objectId: objectId ?? '',
+      liftId: liftId ?? null,
       date: today(),
       supplier: '',
       kind: 'DEFECT',
@@ -47,6 +58,9 @@ export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
     },
   });
   const { errors } = form.formState;
+  const chosenObject = form.watch('objectId');
+  // Лифты выбранного объекта: из карточки объекта или из списка объектов
+  const lifts = liftsProp ?? objects.data?.find((o) => o.id === chosenObject)?.lifts ?? [];
 
   const onSubmit = form.handleSubmit(async (body) => {
     try {
@@ -68,6 +82,7 @@ export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
           form.reset({
             ...form.formState.defaultValues,
             objectId: objectId ?? '',
+            liftId: liftId ?? null,
             date: today(),
           } as ClaimCreate);
       }}
@@ -92,7 +107,10 @@ export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
                     <SimpleSelect
                       id="objectId"
                       value={field.value || null}
-                      onChange={(v) => field.onChange(v ?? '')}
+                      onChange={(v) => {
+                        field.onChange(v ?? '');
+                        form.setValue('liftId', null);
+                      }}
                       placeholder="Выберите объект"
                       options={(objects.data ?? []).map((o) => ({
                         value: o.id,
@@ -102,6 +120,24 @@ export function ClaimFormDialog({ trigger, objectId, onCreated }: Props) {
                   )}
                 />
                 <FieldError errors={[errors.objectId && { message: 'Выберите объект' }]} />
+              </Field>
+            )}
+            {lifts.length > 1 && (
+              <Field>
+                <FieldLabel htmlFor="claim-lift">Лифт</FieldLabel>
+                <Controller
+                  control={form.control}
+                  name="liftId"
+                  render={({ field }) => (
+                    <SimpleSelect
+                      id="claim-lift"
+                      value={field.value}
+                      onChange={field.onChange}
+                      noneLabel="Объект в целом"
+                      options={lifts.map((l) => ({ value: l.id, label: liftLabel(l) }))}
+                    />
+                  )}
+                />
               </Field>
             )}
             <div className="grid grid-cols-2 gap-3">

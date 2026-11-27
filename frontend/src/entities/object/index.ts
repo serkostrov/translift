@@ -1,10 +1,13 @@
 export {
   objectKeys,
+  useAddLifts,
   useCreateObject,
+  useDeleteLift,
   useObject,
   useObjectHistory,
   useObjectPages,
   useObjects,
+  useUpdateLift,
   useUpdateObject,
 } from './api/objects';
-export { FlagBadge, ObjectStateBadge, StageSegments } from './ui/object-badges';
+export { FlagBadge, LiftBars, ObjectStateBadge, StageSegments } from './ui/object-badges';

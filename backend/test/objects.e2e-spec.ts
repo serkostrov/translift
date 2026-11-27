@@ -64,7 +64,7 @@ describe('Объекты (e2e)', () => {
     const mine = await foreman.agent.get('/api/objects').expect(200);
     expect((mine.body as ObjectListItem[]).map((o) => o.id)).toEqual([id]);
     await foreman.agent.get(`/api/objects/${id}`).expect(200);
-    await foreman.agent.patch(`/api/objects/${id}`).send({ floors: 5 }).expect(403);
+    await foreman.agent.patch(`/api/objects/${id}`).send({ shortAddress: 'x' }).expect(403);
   });
 
   it('фильтры: поиск по адресу и «без бригады»', async () => {

@@ -108,7 +108,10 @@ export function ObjectsCard({
             {
               key: 'stage',
               header: 'Этап',
-              cell: (o) => o.currentStage?.shortName ?? 'Не начат',
+              cell: (o) =>
+                o.lifts.length > 1
+                  ? `Лифтов: ${o.lifts.length}`
+                  : (o.currentStage?.shortName ?? 'Не начат'),
             },
             { key: 'deadline', header: 'Срок', cell: (o) => formatDate(o.deadline) },
           ]}

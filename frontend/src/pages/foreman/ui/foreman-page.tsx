@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { NotificationList, useNotifications } from '@/entities/notification';
-import { useObjects } from '@/entities/object';
+import { LiftBars, useObjects } from '@/entities/object';
 import { useCurrentUser } from '@/entities/session';
 import { InstallHint } from '@/features/pwa';
 import { Card } from '@/shared/ui/card';
@@ -42,13 +42,21 @@ export function ForemanPage() {
                   <div className="flex-1 font-medium">{o.shortAddress}</div>
                   <ChevronRight className="size-4 text-muted-foreground" />
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {o.currentStage
-                    ? `Сейчас: ${o.currentStage.shortName} · ${o.percent}%`
-                    : 'Новый объект'}
-                </div>
-                <Progress value={o.percent} />
-                {o.nextStage && <div className="text-sm">Следующий: {o.nextStage.shortName}</div>}
+                {o.lifts.length > 1 ? (
+                  <LiftBars lifts={o.lifts} />
+                ) : (
+                  <>
+                    <div className="text-sm text-muted-foreground">
+                      {o.currentStage
+                        ? `Сейчас: ${o.currentStage.shortName} · ${o.percent}%`
+                        : 'Новый объект'}
+                    </div>
+                    <Progress value={o.percent} />
+                    {o.nextStage && (
+                      <div className="text-sm">Следующий: {o.nextStage.shortName}</div>
+                    )}
+                  </>
+                )}
               </Card>
             </Link>
           ))}

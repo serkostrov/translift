@@ -1,6 +1,8 @@
 import {
   DOCUMENT_ACCEPT,
   type FileDto,
+  type LiftDetails,
+  liftLabel,
   type MarkDto,
   type ObjectDetails,
   type TemplateStageDto,
@@ -8,7 +10,7 @@ import {
 } from '@contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { ClaimStatusBadge, useClaims } from '@/entities/claim';
 import {
@@ -24,6 +26,7 @@ import {
 import {
   FlagBadge,
   ObjectStateBadge,
+  useDeleteLift,
   useObject,
   useObjectHistory,
   useUpdateObject,
@@ -32,7 +35,8 @@ import { useTemplates } from '@/entities/refs';
 import { hasRole, isManager, useCurrentUser } from '@/entities/session';
 import { ClaimFormDialog } from '@/features/claim';
 import { FinanceCard } from '@/features/finance';
-import { MarkStageDialog } from '@/features/mark-stage';
+import { AddLiftDialog, EditLiftDialog } from '@/features/lift-form';
+import { MarkStageDialog, markableLifts } from '@/features/mark-stage';
 import { ObjectDatesDialog } from '@/features/object-dates';
 import { ObjectFormDialog } from '@/features/object-form';
 import { ObjectReportDialog } from '@/features/object-report';
@@ -66,6 +70,7 @@ import {
   MessageSquare,
   Pencil,
   Plus,
+  Trash2,
   Undo2,
   Upload,
 } from '@/shared/ui/icons';
@@ -73,6 +78,7 @@ import { InfiniteFooter } from '@/shared/ui/infinite-footer';
 import { CardsSkeleton, ListSkeleton, ObjectSkeleton, StagesSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { dayOf, InfoCard, PlanDelta, useStagePlan } from './info-card';
+import { LiftMatrix, LiftSwitcher } from './lifts';
 
 export function ObjectPage() {
   const { id = '' } = useParams();
@@ -88,8 +94,37 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
   const navigate = useNavigate();
   const canEdit = isManager(user);
   const isForeman = hasRole(user, 'FOREMAN');
-  const canMark = (canEdit || isForeman) && o.state !== 'DONE' && !o.archived;
   const update = useUpdateObject(o.id);
+  const removeLift = useDeleteLift(o.id);
+  const [dialog, setDialog] = useState<'addLift' | 'editLift' | null>(null);
+  // Отметка из таблицы лифтов: лифт и этап уже выбраны
+  const [quickMark, setQuickMark] = useState<{ liftId: string; stageId: string } | null>(null);
+
+  // Выбранный лифт — в адресе (?lift=…): переживает обновление страницы и кнопку «Назад»
+  const [params, setParams] = useSearchParams();
+  const multi = o.lifts.length > 1;
+  const lift: LiftDetails | null = multi
+    ? (o.lifts.find((l) => l.id === params.get('lift')) ?? null)
+    : o.lifts[0];
+  const selectLift = (id: string | null) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('lift', id);
+        else next.delete('lift');
+        return next;
+      },
+      { replace: true },
+    );
+
+  const markable = o.archived ? [] : markableLifts(o, user);
+  const canMark = (canEdit || isForeman) && markable.length > 0;
+  // Открыли лифт, который отмечать нельзя (сдан или чужой бригады) — кнопки нет
+  const canMarkHere = canMark && (!lift || markable.some((l) => l.id === lift.id));
+  const firstOpened = o.lifts
+    .map((l) => l.openedDate)
+    .filter((d): d is string => !!d)
+    .sort()[0];
 
   const toggleArchive = () =>
     update.mutate(
@@ -104,6 +139,7 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
   const markButton = (className?: string) => (
     <MarkStageDialog
       object={o}
+      liftId={lift?.id}
       trigger={
         <Button className={className}>
           <CircleCheck />
@@ -114,7 +150,7 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
   );
 
   return (
-    <div className={cn('space-y-4', canMark && isForeman && 'pb-16 md:pb-0')}>
+    <div className={cn('space-y-4', canMarkHere && isForeman && 'pb-16 md:pb-0')}>
       <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate(-1)}>
         <ArrowLeft />
         Назад
@@ -127,11 +163,17 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
             <div className="flex flex-wrap gap-1.5">
               <ObjectStateBadge state={o.state} />
               {o.archived && <Badge variant="outline">В архиве</Badge>}
-              <Badge variant="outline">{WORK_TYPE_LABELS[o.workType]}</Badge>
-              {(o.floors || o.capacityKg) && (
-                <Badge variant="outline">
-                  {o.floors ? `${o.floors} эт.` : ''} {o.capacityKg ? `${o.capacityKg} кг` : ''}
-                </Badge>
+              {multi ? (
+                <Badge variant="outline">Лифтов: {o.lifts.length}</Badge>
+              ) : (
+                <>
+                  <Badge variant="outline">{WORK_TYPE_LABELS[o.workType]}</Badge>
+                  {(o.floors || o.capacityKg) && (
+                    <Badge variant="outline">
+                      {o.floors ? `${o.floors} эт.` : ''} {o.capacityKg ? `${o.capacityKg} кг` : ''}
+                    </Badge>
+                  )}
+                </>
               )}
               <Badge variant="outline">{o.brigade?.name ?? 'Бригада не назначена'}</Badge>
               {o.flags.map((f) => (
@@ -141,7 +183,7 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
             {/* Телефон: главное действие на всю ширину, остальные — ровная сетка 2×2.
                 Широкий экран: всё в один ряд. */}
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {canMark &&
+              {canMarkHere &&
                 markButton(isForeman ? 'hidden md:inline-flex' : 'h-9 w-full sm:h-8 sm:w-auto')}
               {canEdit && (
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -154,18 +196,30 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
                       </Button>
                     }
                   />
-                  <ObjectDatesDialog
-                    object={o}
-                    trigger={
-                      <Button variant="outline" className="w-full sm:w-auto">
-                        <CalendarDays />
-                        Поставка, даты
-                      </Button>
-                    }
-                  />
+                  {!multi && (
+                    <ObjectDatesDialog
+                      object={o}
+                      lift={o.lifts[0]}
+                      trigger={
+                        <Button variant="outline" className="w-full sm:w-auto">
+                          <CalendarDays />
+                          Поставка, даты
+                        </Button>
+                      }
+                    />
+                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => setDialog('addLift')}
+                    disabled={o.archived}
+                  >
+                    <Plus />
+                    Лифт
+                  </Button>
                   <ObjectReportDialog
                     objectId={o.id}
-                    openedDate={o.openedDate}
+                    openedDate={firstOpened ?? null}
                     triggerClassName="w-full sm:w-auto"
                   />
                   <Button
@@ -189,7 +243,9 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
             </div>
             <div className="min-w-0 space-y-1 text-right text-sm">
               <div className="text-foreground/80">
-                {o.currentStage?.shortName ?? 'Этапы не отмечены'}
+                {multi
+                  ? `в среднем по ${o.lifts.length} лифтам`
+                  : (o.currentStage?.shortName ?? 'Этапы не отмечены')}
               </div>
               {o.deadline && (
                 <div className={o.isRisk ? 'text-destructive' : 'text-muted-foreground'}>
@@ -202,6 +258,26 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
         </CardContent>
       </Card>
 
+      {multi && <LiftSwitcher lifts={o.lifts} value={lift?.id ?? null} onChange={selectLift} />}
+
+      {multi && lift && (
+        <LiftHeader
+          object={o}
+          lift={lift}
+          canEdit={canEdit}
+          onEdit={() => setDialog('editLift')}
+          onDelete={() =>
+            removeLift.mutate(lift.id, {
+              onSuccess: () => {
+                selectLift(null);
+                toast.success('Лифт удалён');
+              },
+              onError: (e) => toast.error(errorMessage(e)),
+            })
+          }
+        />
+      )}
+
       <Tabs defaultValue="work">
         <TabsList>
           <TabsTrigger value="work">Ход работ</TabsTrigger>
@@ -213,19 +289,33 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
           <TabsTrigger value="history">История</TabsTrigger>
         </TabsList>
         <TabsContent value="work">
-          <StagesCard object={o} canRevoke={canEdit && !!o.currentStage} />
+          {lift ? (
+            <StagesCard
+              key={lift.id}
+              object={o}
+              lift={lift}
+              canRevoke={canEdit && !!lift.currentStage}
+            />
+          ) : (
+            <LiftMatrix
+              object={o}
+              markable={new Set(canMark ? markable.map((l) => l.id) : [])}
+              onSelectLift={selectLift}
+              onMark={(liftId, stageId) => setQuickMark({ liftId, stageId })}
+            />
+          )}
         </TabsContent>
         <TabsContent value="photos">
-          <PhotosCard objectId={o.id} />
+          <PhotosCard object={o} liftId={lift && multi ? lift.id : null} />
         </TabsContent>
         <TabsContent value="docs">
           <DocumentsCard objectId={o.id} canUpload={!isForeman} canDelete={canEdit} />
         </TabsContent>
         <TabsContent value="info">
-          <InfoCard object={o} />
+          <InfoCard object={o} lift={lift} onSelectLift={selectLift} />
         </TabsContent>
         <TabsContent value="claims">
-          <ObjectClaims objectId={o.id} />
+          <ObjectClaims object={o} liftId={multi ? (lift?.id ?? null) : null} />
         </TabsContent>
         {!isForeman && (
           <TabsContent value="finance">
@@ -238,22 +328,131 @@ function ObjectView({ object: o }: { object: ObjectDetails }) {
       </Tabs>
 
       {/* На телефоне главная кнопка всегда под пальцем */}
-      {canMark && isForeman && (
+      {canMarkHere && isForeman && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
           {markButton('h-12 w-full text-base')}
         </div>
+      )}
+
+      {quickMark && (
+        <MarkStageDialog
+          object={o}
+          liftId={quickMark.liftId}
+          stageId={quickMark.stageId}
+          open
+          onOpenChange={(v) => !v && setQuickMark(null)}
+        />
+      )}
+      {dialog === 'addLift' && <AddLiftDialog object={o} onClose={() => setDialog(null)} />}
+      {dialog === 'editLift' && lift && (
+        <EditLiftDialog object={o} lift={lift} onClose={() => setDialog(null)} />
       )}
     </div>
   );
 }
 
-function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke: boolean }) {
+/** Шапка выбранного лифта в объекте с несколькими лифтами. */
+function LiftHeader({
+  object: o,
+  lift,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  object: ObjectDetails;
+  lift: LiftDetails;
+  canEdit: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card className="py-4">
+      <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="min-w-56 flex-1 space-y-2">
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <h2 className="text-lg font-semibold">{liftLabel(lift)}</h2>
+            <span className="text-sm text-muted-foreground">
+              {WORK_TYPE_LABELS[lift.workType]}
+              {lift.floors ? ` · ${lift.floors} эт.` : ''}
+              {lift.capacityKg ? ` · ${lift.capacityKg} кг` : ''}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <ObjectStateBadge state={lift.state} />
+            {lift.ownBrigade && <Badge variant="outline">{lift.brigade?.name}</Badge>}
+            {lift.flags.map((f) => (
+              <FlagBadge key={f.code} flag={f} />
+            ))}
+          </div>
+          {canEdit && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={onEdit}>
+                <Pencil />
+                Изменить лифт
+              </Button>
+              <ObjectDatesDialog
+                object={o}
+                lift={lift}
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <CalendarDays />
+                    Поставка, даты
+                  </Button>
+                }
+              />
+              {lift.canDelete && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="text-destructive">
+                      <Trash2 />
+                      Удалить
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Удалить «{liftLabel(lift)}»?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Отметок по лифту нет — удалить можно, если его завели по ошибке.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Не удалять</AlertDialogCancel>
+                      <AlertDialogAction onClick={onDelete}>Удалить</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="text-right">
+          <div className="text-4xl font-semibold leading-none tabular-nums">{lift.percent}%</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            {lift.currentStage?.shortName ?? 'Этапы не отмечены'}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StagesCard({
+  object,
+  lift: o,
+  canRevoke,
+}: {
+  object: ObjectDetails;
+  lift: LiftDetails;
+  canRevoke: boolean;
+}) {
   const templates = useTemplates();
-  const marks = useMarks(o.id);
-  const revoke = useRevokeLastMark(o.id);
+  const marks = useMarks(object.id);
+  const revoke = useRevokeLastMark(object.id);
   const { stages, plan } = useStagePlan(o);
   const current = o.currentStage?.order ?? 0;
-  const markByStage = new Map((marks.data ?? []).map((m) => [m.stage.id, m]));
+  const markByStage = new Map(
+    (marks.data ?? []).filter((m) => m.liftId === o.id).map((m) => [m.stage.id, m]),
+  );
 
   // Раскрытые этапы. По умолчанию — только последний отмеченный; открытые не закрываются
   // при открытии других. После новой отметки раскрывается и она.
@@ -286,15 +485,15 @@ function StagesCard({ object: o, canRevoke }: { object: ObjectDetails; canRevoke
               <AlertDialogHeader>
                 <AlertDialogTitle>Отменить отметку «{o.currentStage?.shortName}»?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Объект вернётся на предыдущий этап. Фото останутся в архиве объекта, контрольные
-                  даты при необходимости поправьте вручную.
+                  {object.lifts.length > 1 ? 'Лифт' : 'Объект'} вернётся на предыдущий этап. Фото
+                  останутся в архиве объекта, контрольные даты при необходимости поправьте вручную.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Не отменять</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() =>
-                    revoke.mutate(undefined, {
+                    revoke.mutate(o.id, {
                       onSuccess: () => toast.success('Отметка отменена'),
                       onError: (e) => toast.error(errorMessage(e)),
                     })
@@ -441,8 +640,14 @@ function StageRow({
   );
 }
 
-function ObjectClaims({ objectId }: { objectId: string }) {
-  const claims = useClaims({ objectId });
+function ObjectClaims({ object, liftId }: { object: ObjectDetails; liftId: string | null }) {
+  const objectId = object.id;
+  const all = useClaims({ objectId });
+  // На вкладке лифта — его рекламации и рекламации по объекту в целом
+  const list = liftId
+    ? (all.data ?? []).filter((c) => !c.lift || c.lift.id === liftId)
+    : (all.data ?? []);
+  const claims = { isPending: all.isPending, data: list };
   const navigate = useNavigate();
   const open = (id: string) => navigate(`/claims/${id}`);
   return (
@@ -451,6 +656,8 @@ function ObjectClaims({ objectId }: { objectId: string }) {
         <CardTitle>Рекламации</CardTitle>
         <ClaimFormDialog
           objectId={objectId}
+          lifts={object.lifts}
+          liftId={liftId}
           onCreated={open}
           trigger={
             <Button variant="outline" size="sm">
@@ -478,7 +685,12 @@ function ObjectClaims({ objectId }: { objectId: string }) {
                 >
                   <span className="tabular-nums text-muted-foreground">№{c.number}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{c.supplier}</div>
+                    <div className="text-sm font-medium">
+                      {c.supplier}
+                      {c.lift && (
+                        <span className="font-normal text-muted-foreground"> · {c.lift.name}</span>
+                      )}
+                    </div>
                     <div className="line-clamp-2 text-sm text-muted-foreground">
                       {c.description}
                     </div>
@@ -502,20 +714,32 @@ type PhotoGroup = {
   photos: FileDto[];
 };
 
-/** Все фото объекта, сгруппированные: этапы (новые сверху), рекламации, без этапа. */
-function PhotosCard({ objectId }: { objectId: string }) {
-  const photos = useObjectFiles(objectId, 'PHOTO');
+/**
+ * Фото объекта, сгруппированные: этапы (новые сверху), рекламации, без этапа.
+ * На вкладке лифта — только его фото; на «Все» у этапа подписан лифт.
+ */
+function PhotosCard({ object, liftId }: { object: ObjectDetails; liftId: string | null }) {
+  const photos = useObjectFiles(object.id, 'PHOTO');
+  const multi = object.lifts.length > 1;
+  const liftName = new Map(object.lifts.map((l) => [l.id, liftLabel(l)]));
+  const list = (photos.data ?? []).filter((p) => !liftId || !p.liftId || p.liftId === liftId);
 
   const groups = new Map<string, PhotoGroup>();
-  for (const p of photos.data ?? []) {
-    const key = p.stage ? `stage-${p.stage.order}` : p.claim ? `claim-${p.claim.id}` : 'other';
+  for (const p of list) {
+    const key = p.stage
+      ? `stage-${p.liftId}-${p.stage.order}`
+      : p.claim
+        ? `claim-${p.claim.id}`
+        : 'other';
     let g = groups.get(key);
     if (!g) {
+      const lift = multi && !liftId && p.liftId ? `${liftName.get(p.liftId)}. ` : '';
       const base = p.stage
         ? {
-            title: `${p.stage.order}. ${p.stage.shortName}`,
+            title: `${lift}${p.stage.order}. ${p.stage.shortName}`,
             subtitle: `отмечен ${formatDateTime(p.stage.markedAt)}`,
-            order: 1000 + p.stage.order,
+            // Новые отметки сверху — по дате, этапы разных лифтов вперемешку
+            order: 1000 + Date.parse(p.stage.markedAt) / 1e9,
           }
         : p.claim
           ? { title: `Рекламация №${p.claim.number}`, subtitle: '', order: 500 + p.claim.number }

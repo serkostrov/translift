@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
 import { CurrentUser, MANAGERS, Roles } from '../../common/auth/decorators.js';
@@ -6,6 +6,10 @@ import {
   type AuditEntry,
   historyQuerySchema,
   idSchema,
+  type LiftCreate,
+  type LiftUpdate,
+  liftCreateSchema,
+  liftUpdateSchema,
   type ObjectCreate,
   type ObjectDetails,
   type ObjectListItem,
@@ -79,5 +83,36 @@ export class ObjectsController {
     @CurrentUser() user: SessionUser,
   ): Promise<ObjectDetails> {
     return this.objects.update(id, body, user);
+  }
+
+  @Roles(...MANAGERS)
+  @Post(':id/lifts')
+  addLifts(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: liftCreateSchema }) body: LiftCreate,
+    @CurrentUser() user: SessionUser,
+  ): Promise<ObjectDetails> {
+    return this.objects.addLifts(id, body, user);
+  }
+
+  @Roles(...MANAGERS)
+  @Patch(':id/lifts/:liftId')
+  updateLift(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('liftId', { schema: idSchema }) liftId: string,
+    @Body({ schema: liftUpdateSchema }) body: LiftUpdate,
+    @CurrentUser() user: SessionUser,
+  ): Promise<ObjectDetails> {
+    return this.objects.updateLift(id, liftId, body, user);
+  }
+
+  @Roles(...MANAGERS)
+  @Delete(':id/lifts/:liftId')
+  deleteLift(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('liftId', { schema: idSchema }) liftId: string,
+    @CurrentUser() user: SessionUser,
+  ): Promise<ObjectDetails> {
+    return this.objects.deleteLift(id, liftId, user);
   }
 }

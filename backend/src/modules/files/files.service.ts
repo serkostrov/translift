@@ -161,12 +161,13 @@ export class FilesService {
         uploadedBy: { select: { id: true, fullName: true } },
         stageMark: {
           select: {
+            liftId: true,
             performedAt: true,
             revokedAt: true,
             stage: { select: { order: true, shortName: true } },
           },
         },
-        claim: { select: { id: true, number: true } },
+        claim: { select: { id: true, number: true, liftId: true } },
       },
     });
     return rows.map((f) => ({
@@ -177,7 +178,8 @@ export class FilesService {
         f.stageMark && !f.stageMark.revokedAt
           ? { ...f.stageMark.stage, markedAt: f.stageMark.performedAt.toISOString() }
           : null,
-      claim: f.claim,
+      claim: f.claim && { id: f.claim.id, number: f.claim.number },
+      liftId: f.stageMark?.liftId ?? f.claim?.liftId ?? null,
     }));
   }
 

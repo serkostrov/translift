@@ -1,14 +1,18 @@
 import {
   type FileDto,
+  type LiftDetails,
+  liftLabel,
   MARK_BACKDATE_DAYS,
   MAX_PHOTOS_PER_MARK,
   type ObjectDetails,
+  type SessionUser,
   type TemplateStageDto,
 } from '@contracts';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { deleteDraftPhoto, uploadPhoto, useCreateMark } from '@/entities/mark';
 import { useTemplates } from '@/entities/refs';
+import { useCurrentUser } from '@/entities/session';
 import { errorMessage } from '@/shared/api/http';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
@@ -39,33 +43,69 @@ type PhotoItem = {
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Отметка этапа: этап, фото с камеры, комментарий, дата. На телефоне — шторка снизу. */
-export function MarkStageDialog({
-  object,
-  trigger,
-}: {
+/** Лифты, которые пользователь может отметить: не сданные; бригадиру — только своей бригады. */
+export function markableLifts(object: ObjectDetails, user: SessionUser): LiftDetails[] {
+  return object.lifts.filter(
+    (l) => l.state !== 'DONE' && (user.role !== 'FOREMAN' || l.brigade?.id === user.brigadeId),
+  );
+}
+
+type DialogProps = {
   object: ObjectDetails;
-  trigger: ReactNode;
+  /** Лифт, выбранный в форме сразу; в объекте с несколькими лифтами его можно сменить */
+  liftId?: string;
+  /** Этап, выбранный сразу (нажали клетку в таблице лифтов) */
+  stageId?: string;
+};
+
+/**
+ * Отметка этапа: лифт, этап, фото с камеры, комментарий, дата. На телефоне — шторка снизу.
+ * Открывается кнопкой (trigger) или снаружи (open/onOpenChange).
+ */
+export function MarkStageDialog({
+  trigger,
+  open: openProp,
+  onOpenChange,
+  ...props
+}: DialogProps & {
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = onOpenChange ?? setOpenState;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
-        {open && <MarkForm object={object} onDone={() => setOpen(false)} />}
-      </DialogContent>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      <DialogContent>{open && <MarkForm {...props} onDone={() => setOpen(false)} />}</DialogContent>
     </Dialog>
   );
 }
 
-function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => void }) {
+function MarkForm({
+  object,
+  liftId: initialLiftId,
+  stageId: initialStageId,
+  onDone,
+}: DialogProps & { onDone: () => void }) {
   const templates = useTemplates();
+  const user = useCurrentUser();
   const create = useCreateMark(object.id);
+  const lifts = markableLifts(object, user);
+  const multi = object.lifts.length > 1;
+  const [liftId, setLiftId] = useState<string | null>(
+    lifts.find((l) => l.id === initialLiftId)?.id ?? lifts[0]?.id ?? null,
+  );
+  const lift = lifts.find((l) => l.id === liftId);
   const stages: TemplateStageDto[] =
-    templates.data?.find((t) => t.id === object.templateId)?.stages ?? [];
-  const available = stages.filter((s) => s.order > (object.currentStage?.order ?? 0));
+    templates.data?.find((t) => t.id === lift?.templateId)?.stages ?? [];
+  const current = lift?.currentStage?.order ?? 0;
+  const available = stages.filter((s) => s.order > current);
 
-  const [stageId, setStageId] = useState<string | null>(object.nextStage?.id ?? null);
+  const [stageId, setStageId] = useState<string | null>(
+    initialStageId ?? lift?.nextStage?.id ?? null,
+  );
   const [comment, setComment] = useState('');
   const today = localDate(new Date());
   const minDate = localDate(new Date(Date.now() - MARK_BACKDATE_DAYS * 86_400_000));
@@ -92,7 +132,7 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
   );
 
   const stage = available.find((s) => s.id === stageId);
-  const skipped = stage ? stage.order - (object.currentStage?.order ?? 0) - 1 : 0;
+  const skipped = stage ? stage.order - current - 1 : 0;
   const ready = photos.filter((p) => p.status === 'done');
   const uploading = photos.some((p) => p.status === 'uploading');
   const needPhoto = !!stage?.photoRequired && ready.length === 0;
@@ -143,9 +183,10 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
     });
 
   const submit = () => {
-    if (!stage) return;
+    if (!stage || !lift) return;
     create.mutate(
       {
+        liftId: lift.id,
         stageId: stage.id,
         date: date === today ? undefined : date,
         comment,
@@ -154,7 +195,10 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
       {
         onSuccess: (obj) => {
           savedRef.current = true;
-          toast.success(`Этап отмечен. Выполнено ${obj.percent}%`);
+          const done = obj.lifts.find((l) => l.id === lift.id)?.percent ?? obj.percent;
+          toast.success(
+            multi ? `${liftLabel(lift)}: выполнено ${done}%` : `Этап отмечен. Выполнено ${done}%`,
+          );
           onDone();
         },
         onError: (e) => toast.error(errorMessage(e)),
@@ -166,10 +210,46 @@ function MarkForm({ object, onDone }: { object: ObjectDetails; onDone: () => voi
     <>
       <DialogHeader>
         <DialogTitle>Отметить этап</DialogTitle>
-        <DialogDescription>{object.shortAddress}</DialogDescription>
+        <DialogDescription>
+          {object.shortAddress}
+          {!multi || lifts.length > 1 || !lift ? '' : `, ${liftLabel(lift)}`}
+        </DialogDescription>
       </DialogHeader>
 
       <div className="space-y-4">
+        {multi && lifts.length > 1 && (
+          <Field>
+            <FieldLabel>Лифт</FieldLabel>
+            {/* Лифтов обычно немного — кнопками быстрее, чем выпадающим списком */}
+            <div className="grid grid-cols-2 gap-2">
+              {lifts.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  aria-pressed={l.id === liftId}
+                  onClick={() => {
+                    setLiftId(l.id);
+                    setStageId(l.nextStage?.id ?? null);
+                  }}
+                  className={cn(
+                    'rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                    l.id === liftId
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary'
+                      : 'hover:bg-muted',
+                  )}
+                >
+                  <div className="truncate font-medium">{liftLabel(l)}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {l.percent}% · {l.currentStage?.shortName ?? 'не начат'}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+        {lifts.length === 0 && (
+          <p className="text-sm text-muted-foreground">Нет лифтов, которые можно отметить.</p>
+        )}
         <Field>
           <FieldLabel htmlFor="stage">Этап</FieldLabel>
           <SimpleSelect

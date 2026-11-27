@@ -87,7 +87,11 @@ export function useCreateMark(objectId: string) {
 export function useRevokeLastMark(objectId: string) {
   const onSuccess = useInvalidateObject(objectId);
   return useMutation({
-    mutationFn: () => http<ObjectDetails>(`/objects/${objectId}/marks/last`, { method: 'DELETE' }),
+    mutationFn: (liftId: string) =>
+      http<ObjectDetails>(`/objects/${objectId}/marks/last`, {
+        method: 'DELETE',
+        query: { liftId },
+      }),
     onSuccess,
   });
 }

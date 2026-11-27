@@ -36,6 +36,7 @@ export class DashboardController {
           stage: { select: { shortName: true, percent: true } },
           author: { select: { fullName: true } },
           object: { select: { id: true, shortAddress: true } },
+          lift: { select: { name: true } },
           photos: { orderBy: { createdAt: 'asc' }, take: 3 },
         },
       }),
@@ -43,6 +44,9 @@ export class DashboardController {
 
     const work = all.filter((o) => o.state !== 'DONE');
     const done = all.filter((o) => o.state === 'DONE');
+    // Счётчики — по лифтам: в доме на три подъезда три лифта в работе
+    const lifts = all.flatMap((o) => o.lifts);
+    const liftsInWork = lifts.filter((l) => l.state !== 'DONE');
     const byDeadline = [...work].sort(
       (a, b) => (a.daysLeft ?? Number.POSITIVE_INFINITY) - (b.daysLeft ?? Number.POSITIVE_INFINITY),
     );
@@ -50,28 +54,30 @@ export class DashboardController {
     return {
       today: todayIn(this.config.get('APP_TIMEZONE')),
       kpi: {
-        inWork: work.length,
-        handover: work.filter((o) => o.state === 'HANDOVER').length,
-        done: done.length,
-        risk: work.filter((o) => o.isRisk).length,
-        noBrigade: work.filter((o) => !o.brigade).length,
+        inWork: liftsInWork.length,
+        handover: liftsInWork.filter((l) => l.state === 'HANDOVER').length,
+        done: lifts.length - liftsInWork.length,
+        risk: liftsInWork.filter((l) => l.isRisk).length,
+        noBrigade: liftsInWork.filter((l) => !l.brigade).length,
       },
       objects: [...byDeadline, ...done],
       attention: byDeadline
         .filter((o) => o.flags.length > 0)
         .sort((a, b) => Number(b.isRisk) - Number(a.isRisk)),
       brigades: brigades.map((b) => {
-        const mine = work.filter((o) => o.brigade?.id === b.id);
+        // Бригада ведёт лифт сама или как бригада объекта
+        const mine = liftsInWork.filter((l) => l.brigade?.id === b.id);
+        const objects = work.filter((o) => o.lifts.some((l) => l.brigade?.id === b.id));
         return {
           id: b.id,
           name: b.name,
           foreman: b.foreman?.fullName ?? null,
           headcount: b.headcount,
-          objects: mine.length,
+          objects: objects.length,
           avgPercent: mine.length
-            ? Math.round(mine.reduce((s, o) => s + o.percent, 0) / mine.length)
+            ? Math.round(mine.reduce((s, l) => s + l.percent, 0) / mine.length)
             : 0,
-          risk: mine.filter((o) => o.isRisk).length,
+          risk: mine.filter((l) => l.isRisk).length,
         };
       }),
       lastMarks: marks.map((m) => ({
@@ -79,6 +85,7 @@ export class DashboardController {
         performedAt: m.performedAt.toISOString(),
         author: m.author.fullName,
         object: m.object,
+        lift: m.lift.name,
         stage: m.stage.shortName,
         percent: m.stage.percent,
         comment: m.comment,

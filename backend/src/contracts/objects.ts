@@ -39,24 +39,66 @@ export type ObjectFlag = { level: FlagLevel; code: string; text: string };
 const intOrNull = z.coerce.number().int().min(1).max(10_000).nullable().optional();
 const dateOrNull = dateSchema.nullable().optional();
 
-export const objectCreateSchema = z.object({
-  address: requiredText(500),
-  shortAddress: requiredText(200),
+/** Характеристики лифта, которые задают при создании. */
+const liftFieldsShape = {
   floors: intOrNull,
   capacityKg: intOrNull,
   liftInfo: optionalText(1000),
+  /** Плановое начало работ — от него считаются плановые даты этапов */
+  plannedStartDate: dateOrNull,
+};
+
+/** Новый объект сразу с первым лифтом — для одного лифта форма та же, что и раньше. */
+export const objectCreateSchema = z.object({
+  address: requiredText(500),
+  shortAddress: requiredText(200),
   workType: workTypeSchema,
   contractId: idSchema.nullable().optional(),
   brigadeId: idSchema.nullable().optional(),
   deadline: dateOrNull,
-  /** Плановое начало работ — от него считаются плановые даты этапов */
-  plannedStartDate: dateOrNull,
+  /** Название первого лифта; для объекта с одним лифтом не нужно */
+  liftName: optionalText(100),
+  ...liftFieldsShape,
 });
 export type ObjectCreate = z.infer<typeof objectCreateSchema>;
 
-export const objectUpdateSchema = objectCreateSchema
-  .omit({ workType: true })
-  .extend({
+/** Общие поля объекта: адрес, договор, бригада, срок, архив. */
+export const objectUpdateSchema = z
+  .object({
+    address: requiredText(500),
+    shortAddress: requiredText(200),
+    contractId: idSchema.nullable(),
+    brigadeId: idSchema.nullable(),
+    deadline: dateOrNull,
+    archived: z.boolean(),
+  })
+  .partial();
+export type ObjectUpdate = z.infer<typeof objectUpdateSchema>;
+
+/** Сколько лифтов можно добавить за раз */
+export const MAX_LIFTS_AT_ONCE = 20;
+
+/** Новый лифт объекта. При count > 1 к названию добавляется номер: «Подъезд 1», «Подъезд 2»… */
+export const liftCreateSchema = z.object({
+  name: requiredText(100),
+  workType: workTypeSchema,
+  /** Своя бригада лифта; пусто — бригада объекта */
+  brigadeId: idSchema.nullable().optional(),
+  count: z.coerce.number().int().min(1).max(MAX_LIFTS_AT_ONCE).default(1),
+  /**
+   * Название для лифта, который уже был в объекте без названия:
+   * как только лифтов становится больше одного, названия нужны всем.
+   */
+  existingName: optionalText(100),
+  ...liftFieldsShape,
+});
+export type LiftCreate = z.input<typeof liftCreateSchema>;
+
+export const liftUpdateSchema = z
+  .object({
+    name: z.string().trim().max(100),
+    brigadeId: idSchema.nullable(),
+    ...liftFieldsShape,
     deliveryStatus: deliveryStatusSchema,
     deliveryPlannedDate: dateOrNull,
     deliveryActualDate: dateOrNull,
@@ -66,10 +108,9 @@ export const objectUpdateSchema = objectCreateSchema
     commissionedDate: dateOrNull,
     acceptanceDate: dateOrNull,
     ksDate: dateOrNull,
-    archived: z.boolean(),
   })
   .partial();
-export type ObjectUpdate = z.infer<typeof objectUpdateSchema>;
+export type LiftUpdate = z.infer<typeof liftUpdateSchema>;
 
 export const objectListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
@@ -96,6 +137,34 @@ export const historyQuerySchema = z.object(pageQueryShape);
 
 export type StageRef = { id: string; order: number; shortName: string; percent: number };
 
+/** Готовность одного лифта. */
+export type LiftSummary = {
+  id: string;
+  /** Название; пусто — единственный лифт объекта */
+  name: string;
+  position: number;
+  workType: WorkType;
+  floors: number | null;
+  capacityKg: number | null;
+  /** Бригада, которая ведёт лифт: своя или бригада объекта */
+  brigade: { id: string; name: string } | null;
+  /** Бригада назначена лифту отдельно от объекта */
+  ownBrigade: boolean;
+  currentStage: StageRef | null;
+  nextStage: StageRef | null;
+  stagesTotal: number;
+  percent: number;
+  state: ObjectState;
+  lastMarkAt: string | null;
+  deliveryStatus: DeliveryStatus;
+  flags: ObjectFlag[];
+  isRisk: boolean;
+};
+
+/**
+ * Объект в списке. Поля готовности — сводные по лифтам: процент средний,
+ * состояние и текущий этап — по самому отстающему лифту, флаги — все сразу.
+ */
 export type ObjectListItem = {
   id: string;
   address: string;
@@ -118,9 +187,10 @@ export type ObjectListItem = {
   flags: ObjectFlag[];
   isRisk: boolean;
   archived: boolean;
+  lifts: LiftSummary[];
 };
 
-export type ObjectDetails = ObjectListItem & {
+export type LiftDetails = LiftSummary & {
   liftInfo: string | null;
   templateId: string;
   deliveryPlannedDate: string | null;
@@ -132,9 +202,32 @@ export type ObjectDetails = ObjectListItem & {
   commissionedDate: string | null;
   acceptanceDate: string | null;
   ksDate: string | null;
+  /** Отметок нет — лифт можно удалить */
+  canDelete: boolean;
+};
+
+export type ObjectDetails = Omit<ObjectListItem, 'lifts'> & {
+  lifts: LiftDetails[];
   createdAt: string;
   updatedAt: string;
 };
+
+/**
+ * Названия новых лифтов: «Подъезд» ×3 → «Подъезд 1…3». Нумерация продолжает уже занятые
+ * номера: если есть «Подъезд 1», новые будут «Подъезд 2», «Подъезд 3».
+ */
+export function newLiftNames(name: string, count: number, existing: string[]): string[] {
+  if (count === 1) return [name];
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${escaped} (\\d+)$`);
+  const taken = existing.map((n) => Number(re.exec(n)?.[1] ?? 0));
+  const start = Math.max(0, ...taken) + 1;
+  return Array.from({ length: count }, (_, i) => `${name} ${start + i}`);
+}
+
+/** Подпись лифта: название или «Лифт N», если названия нет. */
+export const liftLabel = (lift: { name: string; position: number }) =>
+  lift.name || `Лифт ${lift.position}`;
 
 export type AuditEntry = {
   id: string;
@@ -146,7 +239,7 @@ export type AuditEntry = {
 
 // ---------- План этапов ----------
 
-/** Контрольные даты объекта, которые ставит отметка этапа с признаком `setsDate`. */
+/** Контрольные даты лифта, которые ставит отметка этапа с признаком `setsDate`. */
 export const CONTROL_DATE_FIELDS: Record<ControlDate, ControlDateField[]> = {
   PTO: ['ptoDate', 'declarationDate'],
   DECLARATION: ['declarationDate'],

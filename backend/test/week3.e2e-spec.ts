@@ -142,8 +142,8 @@ describe('Сводка, уведомления, рекламации, финан
     const lastStage = await prisma.templateStage.findFirstOrThrow({
       where: { template: { workType: 'REPLACEMENT' }, percent: 100 },
     });
-    await prisma.liftObject.update({
-      where: { id: objectId },
+    await prisma.lift.updateMany({
+      where: { objectId },
       data: { currentStageId: lastStage.id },
     });
     await prisma.file.update({

@@ -44,27 +44,34 @@ import { ObjectsService } from '../objects/objects.service.js';
 /** Объект «в работе» — не сдан и не в архиве. */
 export const ACTIVE_OBJECT: Prisma.LiftObjectWhereInput = {
   archivedAt: null,
-  OR: [{ currentStageId: null }, { currentStage: { percent: { lt: 100 } } }],
+  lifts: {
+    some: { OR: [{ currentStageId: null }, { currentStage: { percent: { lt: 100 } } }] },
+  },
 };
+
+/** Объекты бригады: она ведёт весь объект или хотя бы один лифт. */
+const brigadeObjects = (brigadeId: string): Prisma.LiftObjectWhereInput => ({
+  OR: [{ brigadeId }, { lifts: { some: { brigadeId } } }],
+});
 
 // ---------- Бригады ----------
 
 const brigadeInclude = {
   foreman: { select: { id: true, fullName: true } },
-  _count: { select: { objects: { where: ACTIVE_OBJECT } } },
-  // Хоть один объект, даже сданный или в архиве: тогда бригаду не удалить, только в архив
+  // Хоть один объект или лифт, даже сданный или в архиве: тогда бригаду не удалить, только в архив
   objects: { select: { id: true }, take: 1 },
+  lifts: { select: { id: true }, take: 1 },
 } as const;
 type BrigadeRow = Prisma.BrigadeGetPayload<{ include: typeof brigadeInclude }>;
 
-const brigadeDto = (b: BrigadeRow): BrigadeDto => ({
+const brigadeDto = (b: BrigadeRow, activeObjects: number): BrigadeDto => ({
   id: b.id,
   name: b.name,
   headcount: b.headcount,
   isActive: b.isActive,
   foreman: b.foreman,
-  activeObjects: b._count.objects,
-  canDelete: b.objects.length === 0,
+  activeObjects,
+  canDelete: b.objects.length === 0 && b.lifts.length === 0,
 });
 
 @ApiTags('refs')
@@ -78,14 +85,20 @@ export class BrigadesController {
       include: brigadeInclude,
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     });
-    return rows.map(brigadeDto);
+    return Promise.all(rows.map(async (b) => brigadeDto(b, await this.activeCount(b.id))));
+  }
+
+  private activeCount(brigadeId: string) {
+    return this.prisma.liftObject.count({
+      where: { AND: [ACTIVE_OBJECT, brigadeObjects(brigadeId)] },
+    });
   }
 
   @Roles(...MANAGERS)
   @Post()
   async create(@Body({ schema: brigadeUpsertSchema }) body: BrigadeUpsert): Promise<BrigadeDto> {
     await this.assertForeman(body.foremanId);
-    return brigadeDto(await this.prisma.brigade.create({ data: body, include: brigadeInclude }));
+    return brigadeDto(await this.prisma.brigade.create({ data: body, include: brigadeInclude }), 0);
   }
 
   @Roles(...MANAGERS)
@@ -96,9 +109,7 @@ export class BrigadesController {
   ): Promise<BrigadeDto> {
     await this.assertForeman(body.foremanId);
     if (body.isActive === false) {
-      const active = await this.prisma.liftObject.count({
-        where: { brigadeId: id, ...ACTIVE_OBJECT },
-      });
+      const active = await this.activeCount(id);
       if (active) {
         throw new ConflictException(
           `У бригады ${active} объект(ов) в работе — сначала назначьте их другой бригаде`,
@@ -107,6 +118,7 @@ export class BrigadesController {
     }
     return brigadeDto(
       await this.prisma.brigade.update({ where: { id }, data: body, include: brigadeInclude }),
+      await this.activeCount(id),
     );
   }
 
@@ -115,7 +127,7 @@ export class BrigadesController {
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id', { schema: idSchema }) id: string) {
-    const objects = await this.prisma.liftObject.count({ where: { brigadeId: id } });
+    const objects = await this.prisma.liftObject.count({ where: brigadeObjects(id) });
     if (objects) {
       throw new ConflictException('У бригады есть объекты — удалить нельзя, отправьте в архив');
     }

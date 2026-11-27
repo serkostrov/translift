@@ -53,14 +53,17 @@ export class StorageService {
           { id: string; shortAddress: string; done: boolean; count: bigint; bytes: bigint }[]
         >(
           `SELECT o.id, o."shortAddress",
-                  (o."archivedAt" IS NOT NULL OR COALESCE(s.percent, 0) >= 100) AS done,
+                  (o."archivedAt" IS NOT NULL OR NOT EXISTS (
+                    SELECT 1 FROM "Lift" l
+                    LEFT JOIN "TemplateStage" s ON s.id = l."currentStageId"
+                    WHERE l."objectId" = o.id AND COALESCE(s.percent, 0) < 100
+                  )) AS done,
                   count(f.id) AS count,
                   sum(CASE WHEN f."originalPurgedAt" IS NULL THEN f."size" ELSE 0 END
                       + COALESCE(f."thumbSize", 0)) AS bytes
            FROM "File" f
            JOIN "LiftObject" o ON o.id = f."objectId"
-           LEFT JOIN "TemplateStage" s ON s.id = o."currentStageId"
-           GROUP BY o.id, s.percent ORDER BY bytes DESC LIMIT 10`,
+           GROUP BY o.id ORDER BY bytes DESC LIMIT 10`,
         ),
         this.prisma.file.count({ where: { originalPurgedAt: { not: null } } }),
         this.prisma.$queryRawUnsafe<[{ count: bigint; bytes: bigint | null }]>(
@@ -145,7 +148,11 @@ export class StorageService {
     }
     if (input.onlyFinished && !input.orphansOnly) {
       where.object = {
-        OR: [{ archivedAt: { not: null } }, { currentStage: { percent: { gte: 100 } } }],
+        // Сдан объект, когда сданы все его лифты
+        OR: [
+          { archivedAt: { not: null } },
+          { lifts: { every: { currentStage: { percent: { gte: 100 } } } } },
+        ],
       };
     }
     return where;

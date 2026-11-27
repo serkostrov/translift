@@ -77,6 +77,8 @@ model Brigade {
   foremanId String?      @unique @db.Uuid
   foreman   User?        @relation("BrigadeForeman", fields: [foremanId], references: [id])
   objects   LiftObject[]
+  /// Лифты, переданные этой бригаде отдельно от остального объекта
+  lifts     Lift[]
   createdAt DateTime     @default(now()) @db.Timestamptz
   updatedAt DateTime     @updatedAt @db.Timestamptz
 }
@@ -115,7 +117,7 @@ model StageTemplate {
   workType WorkType        @unique
   name     String
   stages   TemplateStage[]
-  objects  LiftObject[]
+  lifts    Lift[]
 }
 
 model TemplateStage {
@@ -135,8 +137,8 @@ model TemplateStage {
   /// Контрольная дата, которая проставляется при отметке этапа
   setsDate      ControlDate?
 
-  marks          StageMark[]
-  currentObjects LiftObject[] @relation("CurrentStage")
+  marks        StageMark[]
+  currentLifts Lift[]      @relation("CurrentStage")
 
   @@unique([templateId, order])
 }
@@ -157,26 +159,60 @@ enum DeliveryStatus {
   DELIVERED
 }
 
+/// Объект — дом по адресу: договор, срок, бригада, документы и финансы общие.
+/// Внутри — один или несколько лифтов со своими этапами.
 model LiftObject {
-  id           String  @id @default(uuid(7)) @db.Uuid
+  id           String @id @default(uuid(7)) @db.Uuid
   address      String
   shortAddress String
-  floors       Int?
-  capacityKg   Int?
+
+  contractId String?   @db.Uuid
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  /// Бригада объекта; у отдельного лифта может быть своя
+  brigadeId  String?   @db.Uuid
+  brigade    Brigade?  @relation(fields: [brigadeId], references: [id])
+
+  deadline DateTime? @db.Date // срок по договору
+
+  archivedAt DateTime? @db.Timestamptz
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+
+  lifts         Lift[]
+  marks         StageMark[]
+  files         File[]
+  claims        Claim[]
+  finance       ObjectFinance?
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@index([brigadeId])
+  @@index([contractId])
+}
+
+/// Лифт объекта: свои характеристики, этапы, поставка и контрольные даты.
+model Lift {
+  id       String     @id @default(uuid(7)) @db.Uuid
+  objectId String     @db.Uuid
+  object   LiftObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  /// «Подъезд 1, грузовой». Пусто — единственный лифт объекта, название не показываем
+  name     String     @default("")
+  /// Порядок в объекте
+  position Int        @default(1)
+
+  floors     Int?
+  capacityKg Int?
   /// Свободные сведения о лифте: модель, завод, зав. номер
-  liftInfo     String?
+  liftInfo   String?
 
   templateId String        @db.Uuid
   template   StageTemplate @relation(fields: [templateId], references: [id])
-  contractId String?       @db.Uuid
-  contract   Contract?     @relation(fields: [contractId], references: [id])
+  /// Своя бригада лифта; пусто — бригада объекта
   brigadeId  String?       @db.Uuid
   brigade    Brigade?      @relation(fields: [brigadeId], references: [id])
 
   currentStageId String?        @db.Uuid
   currentStage   TemplateStage? @relation("CurrentStage", fields: [currentStageId], references: [id])
-
-  deadline DateTime? @db.Date // срок по договору
 
   deliveryStatus      DeliveryStatus @default(NOT_ORDERED)
   deliveryPlannedDate DateTime?      @db.Date
@@ -191,19 +227,14 @@ model LiftObject {
   acceptanceDate   DateTime? @db.Date
   ksDate           DateTime? @db.Date
 
-  archivedAt DateTime? @db.Timestamptz
-  createdAt  DateTime  @default(now()) @db.Timestamptz
-  updatedAt  DateTime  @updatedAt @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
 
-  marks         StageMark[]
-  files         File[]
-  claims        Claim[]
-  finance       ObjectFinance?
-  auditLogs     AuditLog[]
-  notifications Notification[]
+  marks  StageMark[]
+  claims Claim[]
 
+  @@index([objectId])
   @@index([brigadeId])
-  @@index([contractId])
 }
 
 /// Отметка выполнения этапа. Не удаляется: отмена — флаг + запись в журнале.
@@ -211,6 +242,8 @@ model StageMark {
   id          String        @id @default(uuid(7)) @db.Uuid
   objectId    String        @db.Uuid
   object      LiftObject    @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  liftId      String        @db.Uuid
+  lift        Lift          @relation(fields: [liftId], references: [id], onDelete: Cascade)
   stageId     String        @db.Uuid
   stage       TemplateStage @relation(fields: [stageId], references: [id])
   performedAt DateTime      @db.Timestamptz
@@ -224,6 +257,7 @@ model StageMark {
   photos      File[]
 
   @@index([objectId, performedAt])
+  @@index([liftId])
 }
 
 // ---------- Файлы (S3) ----------
@@ -283,6 +317,9 @@ model Claim {
   number      Int            @unique @default(autoincrement())
   objectId    String         @db.Uuid
   object      LiftObject     @relation(fields: [objectId], references: [id])
+  /// Лифт, к которому относится рекламация; пусто — к объекту в целом
+  liftId      String?        @db.Uuid
+  lift        Lift?          @relation(fields: [liftId], references: [id], onDelete: SetNull)
   date        DateTime       @db.Date
   supplier    String
   kind        ClaimKind

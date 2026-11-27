@@ -1,5 +1,5 @@
 import type { StageRef } from '../../contracts/index.js';
-import { evaluateObject, type RulesInput } from './object-rules.js';
+import { combineLifts, evaluateObject, type RulesInput } from './object-rules.js';
 
 const stages: StageRef[] = [
   { id: 's1', order: 1, shortName: 'Открытие', percent: 5 },
@@ -78,5 +78,37 @@ describe('evaluateObject', () => {
 
   it('сданный объект не требует внимания', () => {
     expect(codes({ currentStageId: 's4', deadline: '2026-01-01', hasBrigade: false })).toEqual([]);
+  });
+});
+
+describe('combineLifts', () => {
+  const lift = (label: string, currentStageId: string | null, extra: Partial<RulesInput> = {}) => ({
+    ...evaluateObject({ ...base, currentStageId, ...extra }),
+    label,
+    lastMarkDate: null,
+  });
+
+  it('один лифт — как есть', () => {
+    const one = lift('', 's2');
+    expect(combineLifts([one])).toBe(one);
+  });
+
+  it('процент средний, этап и состояние — по отстающему', () => {
+    const r = combineLifts([lift('П1', 's3'), lift('П2', null)]);
+    expect(r.percent).toBe(40);
+    expect(r.state).toBe('IN_PROGRESS');
+    expect(r.currentStage).toBeNull();
+    expect(combineLifts([lift('П1', 's4'), lift('П2', 's3')]).state).toBe('HANDOVER');
+    expect(combineLifts([lift('П1', 's4'), lift('П2', 's4')]).state).toBe('DONE');
+  });
+
+  it('флаг не у всех лифтов — с перечнем лифтов', () => {
+    const r = combineLifts([lift('П1', 's1', { hasBrigade: false }), lift('П2', 's1')]);
+    expect(r.flags).toEqual([{ level: 'warning', code: 'NO_BRIGADE', text: 'Нет бригады (П1)' }]);
+    const all = combineLifts([
+      lift('П1', 's1', { hasBrigade: false }),
+      lift('П2', 's1', { hasBrigade: false }),
+    ]);
+    expect(all.flags[0].text).toBe('Нет бригады');
   });
 });

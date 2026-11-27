@@ -15,6 +15,7 @@ import {
   CLAIM_STATUS_LABELS,
   type ContractorReportQuery,
   DELIVERY_LABELS,
+  liftLabel,
   OBJECT_STATE_LABELS,
   type ObjectReportQuery,
   type SessionUser,
@@ -88,10 +89,16 @@ export class ReportsService {
       startOfDayIn(date, this.tz).getTime() - CHANGED_DAYS * 86_400_000,
     );
 
-    const objects = await this.prisma.liftObject.findMany({
-      where: { contractId: contract.id, archivedAt: null },
-      orderBy: [{ deadline: 'asc' }, { address: 'asc' }],
+    // Строка на каждый лифт: адрес и название лифта
+    const objects = await this.prisma.lift.findMany({
+      where: { object: { contractId: contract.id, archivedAt: null } },
+      orderBy: [
+        { object: { deadline: 'asc' } },
+        { object: { address: 'asc' } },
+        { position: 'asc' },
+      ],
       include: {
+        object: { select: { address: true, deadline: true, updatedAt: true } },
         currentStage: { select: { fullName: true, percent: true } },
         marks: { where: { revokedAt: null }, orderBy: { performedAt: 'desc' }, take: 1 },
       },
@@ -172,10 +179,10 @@ export class ReportsService {
       const row = ws.getRow(r);
       row.values = [
         i + 1,
-        o.address,
+        o.name ? `${o.object.address}, ${o.name}` : o.object.address,
         o.floors,
         o.capacityKg ? `${o.capacityKg} кг` : null,
-        cellDate(toDateString(o.deadline)),
+        cellDate(toDateString(o.object.deadline)),
         cellDate(toDateString(o.openedDate)),
         o.currentStage?.fullName ?? 'Работы не начаты',
         o.currentStage?.percent ?? 0,
@@ -186,7 +193,11 @@ export class ReportsService {
         cellDate(toDateString(o.ksDate)),
       ];
       for (const c of [5, 6, 9, 10, 11, 12, 13]) row.getCell(c).numFmt = DATE_FMT;
-      const lastChange = Math.max(o.updatedAt.getTime(), o.marks[0]?.performedAt.getTime() ?? 0);
+      const lastChange = Math.max(
+        o.updatedAt.getTime(),
+        o.object.updatedAt.getTime(),
+        o.marks[0]?.performedAt.getTime() ?? 0,
+      );
       if (lastChange >= changedSince.getTime()) {
         row.eachCell({ includeEmpty: true }, (cell) => {
           cell.fill = CHANGED_FILL;
@@ -216,9 +227,10 @@ export class ReportsService {
     const from = q.from ?? toDateString(obj.createdAt ? new Date(obj.createdAt) : null) ?? to;
     const showFinance = user.role !== 'FOREMAN';
 
-    const [template, marks, claims, finance] = await Promise.all([
+    const multi = obj.lifts.length > 1;
+    const [templates, marks, claims, finance] = await Promise.all([
       this.prisma.templateStage.findMany({
-        where: { templateId: obj.templateId },
+        where: { templateId: { in: obj.lifts.map((l) => l.templateId) } },
         orderBy: { order: 'asc' },
       }),
       this.prisma.stageMark.findMany({
@@ -230,7 +242,7 @@ export class ReportsService {
     ]);
     const fromAt = startOfDayIn(from, this.tz);
     const toAt = endOfDayIn(to, this.tz);
-    const markByStage = new Map(marks.map((m) => [m.stageId, m]));
+    const markOf = new Map(marks.map((m) => [`${m.liftId}:${m.stageId}`, m]));
     const inPeriod = (d: Date) => d >= fromAt && d < toAt;
 
     const wb = new ExcelJS.Workbook();
@@ -250,17 +262,34 @@ export class ReportsService {
       `Отчёт по объекту за период ${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')}`;
     ws.getCell('A1').font = { bold: true, size: 13 };
 
+    const [first] = obj.lifts;
     const info: [string, string | number | Date | null][] = [
       ['Адрес', obj.address],
-      ['Тип работ', WORK_TYPE_LABELS[obj.workType]],
-      ['Этажность / грузоподъёмность', `${obj.floors ?? '—'} эт. / ${obj.capacityKg ?? '—'} кг`],
+      ...(multi
+        ? [
+            ['Лифты', obj.lifts.map((l) => `${liftLabel(l)} — ${l.percent}%`).join(', ')] as [
+              string,
+              string,
+            ],
+          ]
+        : [
+            ['Тип работ', WORK_TYPE_LABELS[first.workType]] as [string, string],
+            [
+              'Этажность / грузоподъёмность',
+              `${first.floors ?? '—'} эт. / ${first.capacityKg ?? '—'} кг`,
+            ] as [string, string],
+          ]),
       ['Договор', obj.contract?.number ?? '—'],
       ['Бригада', obj.brigade?.name ?? 'не назначена'],
       ['Срок по договору', cellDate(obj.deadline)],
       ['Состояние', OBJECT_STATE_LABELS[obj.state]],
       ['Готовность, %', obj.percent],
-      ['Текущий этап', obj.currentStage?.shortName ?? 'не начат'],
-      ['Поставка оборудования', DELIVERY_LABELS[obj.deliveryStatus]],
+      ...(multi
+        ? []
+        : [
+            ['Текущий этап', first.currentStage?.shortName ?? 'не начат'] as [string, string],
+            ['Поставка оборудования', DELIVERY_LABELS[first.deliveryStatus]] as [string, string],
+          ]),
       ['Требует внимания', obj.flags.map((f) => f.text).join(', ') || 'нет'],
     ];
     let r = 3;
@@ -275,62 +304,97 @@ export class ReportsService {
       r++;
     }
 
-    // Этапы
-    r++;
-    ws.getCell(r, 1).value = 'Ход работ по этапам';
-    ws.getCell(r, 1).font = { bold: true, size: 12 };
-    r++;
-    ws.getRow(r).values = ['№', 'Этап', '%', 'Дата отметки', 'Исполнитель', 'Фото', 'Комментарий'];
-    headerRow(ws.getRow(r));
-    const stagesFrom = ++r;
-    for (const s of template) {
-      const m = markByStage.get(s.id);
-      const row = ws.getRow(r);
-      row.values = [
-        s.order,
-        s.fullName,
-        s.percent,
-        m ? shiftToZone(m.performedAt, this.tz) : null,
-        m?.author.fullName ?? null,
-        m ? m._count.photos : null,
-        m?.isAuto ? 'отмечен вместе со следующим этапом' : (m?.comment ?? null),
-      ];
-      row.getCell(4).numFmt = 'dd.mm.yyyy hh:mm';
-      if (m && inPeriod(m.performedAt)) {
-        row.eachCell({ includeEmpty: true }, (c) => {
-          c.fill = CHANGED_FILL;
-        });
+    // По каждому лифту — этапы и контрольные даты
+    for (const lift of obj.lifts) {
+      r++;
+      if (multi) {
+        ws.getCell(r, 1).value = `Лифт: ${liftLabel(lift)}`;
+        ws.getCell(r, 1).font = { bold: true, size: 13 };
+        r++;
+        const liftInfo: [string, string | number][] = [
+          ['Тип работ', WORK_TYPE_LABELS[lift.workType]],
+          [
+            'Этажность / грузоподъёмность',
+            `${lift.floors ?? '—'} эт. / ${lift.capacityKg ?? '—'} кг`,
+          ],
+          ['Бригада', lift.brigade?.name ?? 'не назначена'],
+          ['Готовность, %', lift.percent],
+          ['Текущий этап', lift.currentStage?.shortName ?? 'не начат'],
+          ['Поставка оборудования', DELIVERY_LABELS[lift.deliveryStatus]],
+        ];
+        for (const [k, v] of liftInfo) {
+          ws.getCell(r, 1).value = k;
+          ws.mergeCells(r, 1, r, 2);
+          ws.getCell(r, 3).value = v;
+          ws.mergeCells(r, 3, r, 7);
+          ws.getCell(r, 1).font = { bold: true };
+          r++;
+        }
+        r++;
       }
-      r++;
-    }
-    boxRows(ws, stagesFrom, r - 1, 7);
-    ws.getCell(r, 2).value =
-      'Отметки за выбранный период выделены цветом. Даты отметок — по времени сервера.';
-    ws.getCell(r, 2).font = { italic: true, color: { argb: 'FF777777' } };
-    r += 2;
 
-    // Контрольные даты
-    ws.getCell(r, 1).value = 'Контрольные даты';
-    ws.getCell(r, 1).font = { bold: true, size: 12 };
-    r++;
-    const dates: [string, string | null][] = [
-      ['Открытие объекта', obj.openedDate],
-      ['ПТО', obj.ptoDate],
-      ['Декларация', obj.declarationDate],
-      ['Ввод в эксплуатацию', obj.commissionedDate],
-      ['Комиссионная приёмка', obj.acceptanceDate],
-      ['КС-2, КС-3', obj.ksDate],
-    ];
-    const datesFrom = r;
-    for (const [k, v] of dates) {
-      ws.getCell(r, 2).value = k;
-      ws.getCell(r, 3).value = cellDate(v);
-      ws.getCell(r, 3).numFmt = DATE_FMT;
-      ws.mergeCells(r, 3, r, 4);
+      ws.getCell(r, 1).value = 'Ход работ по этапам';
+      ws.getCell(r, 1).font = { bold: true, size: 12 };
+      r++;
+      ws.getRow(r).values = [
+        '№',
+        'Этап',
+        '%',
+        'Дата отметки',
+        'Исполнитель',
+        'Фото',
+        'Комментарий',
+      ];
+      headerRow(ws.getRow(r));
+      const stagesFrom = ++r;
+      for (const s of templates.filter((t) => t.templateId === lift.templateId)) {
+        const m = markOf.get(`${lift.id}:${s.id}`);
+        const row = ws.getRow(r);
+        row.values = [
+          s.order,
+          s.fullName,
+          s.percent,
+          m ? shiftToZone(m.performedAt, this.tz) : null,
+          m?.author.fullName ?? null,
+          m ? m._count.photos : null,
+          m?.isAuto ? 'отмечен вместе со следующим этапом' : (m?.comment ?? null),
+        ];
+        row.getCell(4).numFmt = 'dd.mm.yyyy hh:mm';
+        if (m && inPeriod(m.performedAt)) {
+          row.eachCell({ includeEmpty: true }, (c) => {
+            c.fill = CHANGED_FILL;
+          });
+        }
+        r++;
+      }
+      boxRows(ws, stagesFrom, r - 1, 7);
+      ws.getCell(r, 2).value =
+        'Отметки за выбранный период выделены цветом. Даты отметок — по времени сервера.';
+      ws.getCell(r, 2).font = { italic: true, color: { argb: 'FF777777' } };
+      r += 2;
+
+      ws.getCell(r, 1).value = 'Контрольные даты';
+      ws.getCell(r, 1).font = { bold: true, size: 12 };
+      r++;
+      const dates: [string, string | null][] = [
+        ['Открытие объекта', lift.openedDate],
+        ['ПТО', lift.ptoDate],
+        ['Декларация', lift.declarationDate],
+        ['Ввод в эксплуатацию', lift.commissionedDate],
+        ['Комиссионная приёмка', lift.acceptanceDate],
+        ['КС-2, КС-3', lift.ksDate],
+      ];
+      const datesFrom = r;
+      for (const [k, v] of dates) {
+        ws.getCell(r, 2).value = k;
+        ws.getCell(r, 3).value = cellDate(v);
+        ws.getCell(r, 3).numFmt = DATE_FMT;
+        ws.mergeCells(r, 3, r, 4);
+        r++;
+      }
+      boxRows(ws, datesFrom, r - 1, 4);
       r++;
     }
-    boxRows(ws, datesFrom, r - 1, 4);
-    r++;
 
     // Финансы
     if (showFinance) {
@@ -482,12 +546,19 @@ export class ReportsService {
       row.values = [
         i + 1,
         o.address,
-        WORK_TYPE_LABELS[o.workType],
+        [...new Set(o.lifts.map((l) => WORK_TYPE_LABELS[l.workType]))].join(', '),
         o.brigade?.name ?? 'не назначена',
         o.contract?.number ?? '',
         cellDate(o.deadline),
         o.state === 'DONE' ? null : o.daysLeft,
-        o.currentStage?.shortName ?? 'не начат',
+        o.lifts.length > 1
+          ? o.lifts
+              .map(
+                (l) =>
+                  `${liftLabel(l)}: ${l.currentStage?.shortName ?? 'не начат'} (${l.percent}%)`,
+              )
+              .join('\n')
+          : (o.currentStage?.shortName ?? 'не начат'),
         o.percent,
         OBJECT_STATE_LABELS[o.state],
         marksBy.get(o.id) ?? 0,
@@ -500,6 +571,7 @@ export class ReportsService {
       ];
       row.getCell(6).numFmt = DATE_FMT;
       row.getCell(12).numFmt = DATE_FMT;
+      row.getCell(8).alignment = { wrapText: true, vertical: 'top' };
       for (const c of [15, 16, 17]) row.getCell(c).numFmt = MONEY_FMT;
       if (o.isRisk && o.state !== 'DONE') {
         row.getCell(13).fill = RISK_FILL;

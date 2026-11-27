@@ -113,7 +113,7 @@ describe('Отметки этапов и фото (e2e)', () => {
       .expect(201);
     const obj = res.body as ObjectDetails;
     expect(obj).toMatchObject({ percent: 5, state: 'IN_PROGRESS' });
-    expect(obj.openedDate).not.toBeNull();
+    expect(obj.lifts[0].openedDate).not.toBeNull();
     expect(obj.nextStage?.order).toBe(2);
 
     const marks = (await manager.agent.get(`/api/objects/${objectId}/marks`).expect(200))
@@ -142,8 +142,8 @@ describe('Отметки этапов и фото (e2e)', () => {
       .expect(201);
     const obj = res.body as ObjectDetails;
     expect(obj).toMatchObject({ percent: 80, state: 'HANDOVER' });
-    expect(obj.ptoDate).not.toBeNull();
-    expect(obj.declarationDate).toBe(obj.ptoDate);
+    expect(obj.lifts[0].ptoDate).not.toBeNull();
+    expect(obj.lifts[0].declarationDate).toBe(obj.lifts[0].ptoDate);
 
     const marks = (await manager.agent.get(`/api/objects/${objectId}/marks`).expect(200))
       .body as MarkDto[];

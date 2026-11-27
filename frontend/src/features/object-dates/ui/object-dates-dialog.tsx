@@ -1,16 +1,18 @@
 import {
   DELIVERY_LABELS,
   DELIVERY_STATUSES,
+  type LiftDetails,
+  type LiftUpdate,
+  liftLabel,
+  liftUpdateSchema,
   type ObjectDetails,
-  type ObjectUpdate,
-  objectUpdateSchema,
 } from '@contracts';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { type ReactNode, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
-import { useUpdateObject } from '@/entities/object';
+import { useUpdateLift } from '@/entities/object';
 import { errorMessage } from '@/shared/api/http';
 import { Button } from '@/shared/ui/button';
 import {
@@ -26,7 +28,7 @@ import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/shared/u
 import { Input } from '@/shared/ui/input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 
-const schema = objectUpdateSchema.pick({
+const schema = liftUpdateSchema.pick({
   deliveryStatus: true,
   deliveryPlannedDate: true,
   deliveryActualDate: true,
@@ -43,7 +45,7 @@ type DateKey = Exclude<keyof FormInput, 'deliveryStatus'>;
 
 const DATES: [DateKey, string][] = [
   ['plannedStartDate', 'Плановое начало'],
-  ['openedDate', 'Открытие объекта'],
+  ['openedDate', 'Открытие (начало работ)'],
   ['ptoDate', 'ПТО'],
   ['declarationDate', 'Декларация'],
   ['commissionedDate', 'Ввод в эксплуатацию'],
@@ -51,30 +53,32 @@ const DATES: [DateKey, string][] = [
   ['ksDate', 'КС-2, КС-3'],
 ];
 
-/** Поставка оборудования и контрольные даты объекта. */
+/** Поставка оборудования и контрольные даты лифта. */
 export function ObjectDatesDialog({
   object,
+  lift,
   trigger,
 }: {
   object: ObjectDetails;
+  lift: LiftDetails;
   trigger: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const update = useUpdateObject(object.id);
+  const update = useUpdateLift(object.id);
   const defaults = (): FormInput => ({
-    deliveryStatus: object.deliveryStatus,
-    deliveryPlannedDate: object.deliveryPlannedDate,
-    deliveryActualDate: object.deliveryActualDate,
-    ...Object.fromEntries(DATES.map(([k]) => [k, object[k]])),
+    deliveryStatus: lift.deliveryStatus,
+    deliveryPlannedDate: lift.deliveryPlannedDate,
+    deliveryActualDate: lift.deliveryActualDate,
+    ...Object.fromEntries(DATES.map(([k]) => [k, lift[k]])),
   });
-  const form = useForm<FormInput, unknown, ObjectUpdate>({
+  const form = useForm<FormInput, unknown, LiftUpdate>({
     resolver: zodResolver(schema),
     defaultValues: defaults(),
   });
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      await update.mutateAsync(values);
+      await update.mutateAsync({ liftId: lift.id, body: values });
       toast.success('Даты сохранены');
       setOpen(false);
     } catch (e) {
@@ -101,7 +105,10 @@ export function ObjectDatesDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Поставка и даты</DialogTitle>
-          <DialogDescription>{object.shortAddress}</DialogDescription>
+          <DialogDescription>
+            {object.shortAddress}
+            {lift.name ? `, ${liftLabel(lift)}` : ''}
+          </DialogDescription>
         </DialogHeader>
         <form id="dates-form" onSubmit={onSubmit} noValidate>
           <FieldGroup className="gap-5">

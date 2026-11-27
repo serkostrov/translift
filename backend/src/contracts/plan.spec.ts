@@ -1,4 +1,4 @@
-import { planControlDates, planStages } from './objects.js';
+import { newLiftNames, planControlDates, planStages } from './objects.js';
 
 const stages = [
   { id: 'b', order: 2, plannedDays: 5, setsDate: 'PTO' as const },
@@ -24,5 +24,16 @@ describe('план этапов', () => {
       acceptanceDate: '2027-01-16',
       commissionedDate: '2027-01-16',
     });
+  });
+});
+
+describe('newLiftNames', () => {
+  it('один лифт — название как есть', () => {
+    expect(newLiftNames('Грузовой', 1, ['Подъезд 1'])).toEqual(['Грузовой']);
+  });
+  it('несколько — с номерами, продолжая занятые', () => {
+    expect(newLiftNames('Подъезд', 2, ['Подъезд 1'])).toEqual(['Подъезд 2', 'Подъезд 3']);
+    expect(newLiftNames('Подъезд', 2, ['Грузовой'])).toEqual(['Подъезд 1', 'Подъезд 2']);
+    expect(newLiftNames('П.', 1 + 1, ['П. 4'])).toEqual(['П. 5', 'П. 6']);
   });
 });

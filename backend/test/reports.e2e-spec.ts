@@ -55,7 +55,7 @@ describe('Отчёты Excel и импорт (e2e)', () => {
       .expect(201);
     objectId = obj.body.id;
     await manager.agent
-      .patch(`/api/objects/${objectId}`)
+      .patch(`/api/objects/${objectId}/lifts/${obj.body.lifts[0].id}`)
       .send({ ptoDate: '2026-11-20' })
       .expect(200);
   });
@@ -163,5 +163,35 @@ describe('Отчёты Excel и импорт (e2e)', () => {
       .post('/api/import/objects')
       .attach('file', file, { filename: 'x.xlsx', contentType: XLSX })
       .expect(403);
+  });
+
+  it('импорт: колонка «Лифт» собирает строки одного адреса в один объект', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Лист');
+    ws.addRow(['№ п/п', 'Адрес МКД', 'Лифт', 'Этажность', 'Процент выполнения работ, %']);
+    ws.addRow([1, 'г. Тейково, ул. Октябрьская, д. 3', 'Подъезд 1', 9, 5]);
+    ws.addRow([2, 'г. Тейково, ул. Октябрьская, д. 3', 'Подъезд 2', 12, null]);
+    const file = Buffer.from(await wb.xlsx.writeBuffer());
+    const res = await manager.agent
+      .post('/api/import/objects')
+      .field('dryRun', 'false')
+      .attach('file', file, { filename: 'лифты.xlsx', contentType: XLSX })
+      .expect(201);
+    expect(res.body as ImportResultDto).toMatchObject({ created: 2, errors: 0 });
+
+    const list = await manager.agent.get('/api/objects').query({ q: 'Октябрьская, д. 3' });
+    const found = (list.body as { address: string }[]).filter(
+      (o) => o.address === 'г. Тейково, ул. Октябрьская, д. 3',
+    );
+    expect(found).toHaveLength(1);
+    const lifts = (found[0] as unknown as { lifts: unknown[] }).lifts as {
+      name: string;
+      floors: number;
+      percent: number;
+    }[];
+    expect(lifts.map((l) => [l.name, l.floors, l.percent])).toEqual([
+      ['Подъезд 1', 9, 5],
+      ['Подъезд 2', 12, 0],
+    ]);
   });
 });

@@ -1,5 +1,7 @@
 import type {
   AuditEntry,
+  LiftCreate,
+  LiftUpdate,
   ObjectCreate,
   ObjectDetails,
   ObjectListItem,
@@ -66,5 +68,42 @@ export function useUpdateObject(id: string) {
       qc.invalidateQueries({ queryKey: objectKeys.all });
       qc.invalidateQueries({ queryKey: ['brigades'] });
     },
+  });
+}
+
+/** Ответ с объектом после правки: кладём в кэш и обновляем списки. */
+function useObjectSaved(id: string) {
+  const qc = useQueryClient();
+  return (data: ObjectDetails) => {
+    qc.setQueryData(objectKeys.detail(id), data);
+    qc.invalidateQueries({ queryKey: objectKeys.all });
+    qc.invalidateQueries({ queryKey: ['brigades'] });
+  };
+}
+
+export function useAddLifts(objectId: string) {
+  const onSuccess = useObjectSaved(objectId);
+  return useMutation({
+    mutationFn: (body: LiftCreate) =>
+      http<ObjectDetails>(`/objects/${objectId}/lifts`, { method: 'POST', body }),
+    onSuccess,
+  });
+}
+
+export function useUpdateLift(objectId: string) {
+  const onSuccess = useObjectSaved(objectId);
+  return useMutation({
+    mutationFn: ({ liftId, body }: { liftId: string; body: LiftUpdate }) =>
+      http<ObjectDetails>(`/objects/${objectId}/lifts/${liftId}`, { method: 'PATCH', body }),
+    onSuccess,
+  });
+}
+
+export function useDeleteLift(objectId: string) {
+  const onSuccess = useObjectSaved(objectId);
+  return useMutation({
+    mutationFn: (liftId: string) =>
+      http<ObjectDetails>(`/objects/${objectId}/lifts/${liftId}`, { method: 'DELETE' }),
+    onSuccess,
   });
 }
