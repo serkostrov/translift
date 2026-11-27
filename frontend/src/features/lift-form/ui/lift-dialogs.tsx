@@ -21,6 +21,7 @@ import { Button } from '@/shared/ui/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
+import { NumberInput } from '@/shared/ui/number-input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { Textarea } from '@/shared/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
@@ -219,10 +220,8 @@ export function AddLiftDialog({ object, onClose }: { object: ObjectDetails; onCl
         </Field>
         <Field data-invalid={!!errors.count}>
           <FieldLabel htmlFor="lift-count">Сколько</FieldLabel>
-          <Input
+          <NumberInput
             id="lift-count"
-            type="number"
-            inputMode="numeric"
             min={1}
             max={MAX_LIFTS_AT_ONCE}
             {...form.register('count')}
@@ -402,12 +401,12 @@ function LiftFields({
       <div className="grid grid-cols-2 gap-3">
         <Field data-invalid={!!errors.floors}>
           <FieldLabel htmlFor="lift-floors">Этажность</FieldLabel>
-          <Input id="lift-floors" type="number" inputMode="numeric" {...register('floors')} />
+          <NumberInput id="lift-floors" min={1} {...register('floors')} />
           <FieldError errors={[errors.floors]} />
         </Field>
         <Field data-invalid={!!errors.capacityKg}>
           <FieldLabel htmlFor="lift-capacity">Грузоподъёмность, кг</FieldLabel>
-          <Input id="lift-capacity" type="number" inputMode="numeric" {...register('capacityKg')} />
+          <NumberInput id="lift-capacity" min={0} step={50} {...register('capacityKg')} />
           <FieldError errors={[errors.capacityKg]} />
         </Field>
       </div>

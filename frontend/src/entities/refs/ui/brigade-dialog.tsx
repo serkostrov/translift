@@ -14,6 +14,7 @@ import { ArchiveActions } from '@/shared/ui/archive-actions';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/shared/ui/field';
 import { FormDialog } from '@/shared/ui/form-dialog';
 import { Input } from '@/shared/ui/input';
+import { NumberInput } from '@/shared/ui/number-input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { useBrigades, useDeleteBrigade, useSaveBrigade, useUsers } from '../api/refs';
 import { CreateUserDialog, PasswordIssuedDialog } from './user-dialogs';
@@ -130,7 +131,7 @@ export function BrigadeDialog({
       </Field>
       <Field data-invalid={!!errors.headcount}>
         <FieldLabel htmlFor="headcount">Человек в бригаде</FieldLabel>
-        <Input id="headcount" type="number" inputMode="numeric" {...form.register('headcount')} />
+        <NumberInput id="headcount" min={1} {...form.register('headcount')} />
         <FieldError errors={[errors.headcount]} />
       </Field>
       {brigade && (

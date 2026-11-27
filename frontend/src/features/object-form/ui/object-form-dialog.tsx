@@ -28,6 +28,7 @@ import {
 } from '@/shared/ui/dialog';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
+import { NumberInput } from '@/shared/ui/number-input';
 import { SimpleSelect } from '@/shared/ui/simple-select';
 import { Textarea } from '@/shared/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
@@ -192,10 +193,8 @@ export function ObjectFormDialog({ object, trigger }: Props) {
                 </Field>
                 <Field data-invalid={!!errors.liftCount}>
                   <FieldLabel htmlFor="liftCount">Лифтов</FieldLabel>
-                  <Input
+                  <NumberInput
                     id="liftCount"
-                    type="number"
-                    inputMode="numeric"
                     min={1}
                     max={MAX_LIFTS_AT_ONCE}
                     {...form.register('liftCount')}
@@ -213,20 +212,15 @@ export function ObjectFormDialog({ object, trigger }: Props) {
                 <div className="grid grid-cols-2 gap-3">
                   <Field data-invalid={!!errors.floors}>
                     <FieldLabel htmlFor="floors">Этажность</FieldLabel>
-                    <Input
-                      id="floors"
-                      type="number"
-                      inputMode="numeric"
-                      {...form.register('floors')}
-                    />
+                    <NumberInput id="floors" min={1} {...form.register('floors')} />
                     <FieldError errors={[errors.floors]} />
                   </Field>
                   <Field data-invalid={!!errors.capacityKg}>
                     <FieldLabel htmlFor="capacityKg">Грузоподъёмность, кг</FieldLabel>
-                    <Input
+                    <NumberInput
                       id="capacityKg"
-                      type="number"
-                      inputMode="numeric"
+                      min={0}
+                      step={50}
                       {...form.register('capacityKg')}
                     />
                     <FieldError errors={[errors.capacityKg]} />

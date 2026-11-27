@@ -65,6 +65,7 @@ export function ObjectsPage() {
     );
 
   const rows = objects.items;
+  const hasMultiLift = rows.some((o) => o.lifts.length > 1);
   const placeholder = objects.query.isPlaceholderData;
 
   return (
@@ -225,7 +226,7 @@ export function ObjectsPage() {
                       {o.lifts.length > 1 ? '—' : (o.currentStage?.shortName ?? 'Не начат')}
                     </TableCell>
                     <TableCell>
-                      <StageSegments object={o} />
+                      <StageSegments object={o} labelSpace={hasMultiLift} />
                     </TableCell>
                     <TableCell>
                       <Deadline object={o} />

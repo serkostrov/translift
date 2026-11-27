@@ -5,6 +5,7 @@ import {
   type ObjectFlag,
   type ObjectListItem,
 } from '@contracts';
+import { Fragment } from 'react';
 import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/badge';
 
@@ -53,7 +54,7 @@ function Segments({ item, compact }: { item: Progress; compact?: boolean }) {
           key={i}
           className={cn(
             'rounded-[1px]',
-            compact ? 'h-2 w-1' : 'h-2.5 w-1.5',
+            compact ? 'h-2 w-1.5' : 'h-2.5 w-1.5',
             i < done ? color : 'bg-muted',
           )}
         />
@@ -65,28 +66,32 @@ function Segments({ item, compact }: { item: Progress; compact?: boolean }) {
 /** Сколько лифтов показываем в строке списка; остальные — «+N». */
 const LIFTS_SHOWN = 4;
 
-/** Прогресс каждого лифта объекта — компактно, строкой на лифт. */
+/** Колонки строки лифта: подпись, шкала, процент. Ширины постоянные — строки разных
+ * объектов в таблице стоят ровно друг под другом. */
+const ROW = 'grid w-fit grid-cols-[8rem_auto_2.75rem] items-center gap-x-2';
+const Percent = ({ value }: { value: number }) => (
+  <span className="text-right text-sm font-medium tabular-nums">{value}%</span>
+);
+
+/** Прогресс каждого лифта объекта: подпись, шкала, процент — строкой на лифт. */
 export function LiftBars({ lifts }: { lifts: LiftSummary[] }) {
   const shown = lifts.slice(0, LIFTS_SHOWN);
+  const rest = lifts.slice(LIFTS_SHOWN);
   return (
-    <div className="space-y-0.5">
+    <div className={cn(ROW, 'gap-y-1')}>
       {shown.map((l) => (
-        <div key={l.id} className="flex items-center gap-2 text-xs">
-          <span className="w-24 truncate text-muted-foreground" title={liftLabel(l)}>
+        <Fragment key={l.id}>
+          <span className="truncate text-xs text-muted-foreground" title={liftLabel(l)}>
             {liftLabel(l)}
           </span>
-          <Segments item={{ ...l, isRisk: l.isRisk }} compact />
-          <span className="tabular-nums font-medium">{l.percent}%</span>
-        </div>
+          <Segments item={l} compact />
+          <Percent value={l.percent} />
+        </Fragment>
       ))}
-      {lifts.length > LIFTS_SHOWN && (
-        <div className="text-xs text-muted-foreground">
-          ещё {lifts.length - LIFTS_SHOWN} — средний{' '}
-          {Math.round(
-            lifts.slice(LIFTS_SHOWN).reduce((s, l) => s + l.percent, 0) /
-              (lifts.length - LIFTS_SHOWN),
-          )}
-          %
+      {rest.length > 0 && (
+        <div className="col-span-3 text-xs text-muted-foreground">
+          ещё {rest.length} — в среднем{' '}
+          {Math.round(rest.reduce((s, l) => s + l.percent, 0) / rest.length)}%
         </div>
       )}
     </div>
@@ -97,8 +102,24 @@ export function LiftBars({ lifts }: { lifts: LiftSummary[] }) {
  * Полоска из сегментов по числу этапов: заполнено до текущего.
  * У объекта с несколькими лифтами — по полоске на каждый лифт.
  */
-export function StageSegments({ object }: { object: ObjectListItem }) {
+export function StageSegments({
+  object,
+  labelSpace,
+}: {
+  object: ObjectListItem;
+  /** Оставить слева место под подписи лифтов — когда рядом в таблице есть многолифтовые */
+  labelSpace?: boolean;
+}) {
   if (object.lifts.length > 1) return <LiftBars lifts={object.lifts} />;
+  if (labelSpace) {
+    return (
+      <div className={ROW}>
+        <span />
+        <Segments item={object} compact />
+        <Percent value={object.percent} />
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <Segments item={object} />

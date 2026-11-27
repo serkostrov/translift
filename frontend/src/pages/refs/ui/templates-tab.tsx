@@ -7,6 +7,7 @@ import { errorMessage } from '@/shared/api/http';
 import { Card } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
 import { Input } from '@/shared/ui/input';
+import { NumberInput } from '@/shared/ui/number-input';
 import { StagesSkeleton } from '@/shared/ui/skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { Textarea } from '@/shared/ui/textarea';
@@ -92,10 +93,10 @@ function StageRow({ stage, canEdit }: { stage: TemplateStageDto; canEdit: boolea
     <div className="flex items-center gap-2 md:block">
       <span className="w-20 text-xs text-muted-foreground md:hidden">{label}</span>
       {canEdit ? (
-        <Input
-          className="w-20 md:w-full"
-          type="number"
-          inputMode="numeric"
+        <NumberInput
+          className="w-28 md:w-full"
+          min={0}
+          max={key === 'percent' ? 100 : undefined}
           value={value}
           aria-label={`${label}, этап ${stage.order}`}
           onChange={(e) => set(e.target.value)}

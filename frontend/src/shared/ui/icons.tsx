@@ -49,6 +49,7 @@ export {
   InfoIcon,
   KeyIcon as KeyRound,
   MagnifyingGlassIcon as Search,
+  MinusIcon as Minus,
   MonitorIcon as Monitor,
   MoonIcon as Moon,
   PaperclipIcon as Paperclip,
