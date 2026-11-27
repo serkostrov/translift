@@ -1,5 +1,6 @@
 /**
- * Демо-данные из HTML-прототипа: бригады с бригадирами, договор, 11 объектов.
+ * Демо-данные из HTML-прототипа: бригады с бригадирами, договор, 11 объектов,
+ * а также дом с несколькими лифтами, история отметок, финансы и рекламации (seed-demo-extras.ts).
  * Только для локальной разработки и показа. Повторный запуск ничего не дублирует.
  * Логины: director, finance, brigadir1…4. Пароль — SEED_DEMO_PASSWORD из .env
  * (повторный запуск выставляет его заново).
@@ -8,6 +9,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { hashPassword } from '../src/common/auth/password.js';
 import { PrismaClient } from '../src/generated/prisma/client.js';
+import { DEMO_CONTRACT, seedDemoExtras } from './seed-demo-extras.js';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -128,9 +130,14 @@ async function main() {
 
   if (await prisma.liftObject.count()) {
     console.warn('Объекты уже есть — бригады и объекты не загружаются');
-    return;
+  } else {
+    await seedObjects(reset, passwordHash);
   }
+  // Примеры остальных разделов — к демо-объектам, в том числе на уже заполненной базе
+  await seedDemoExtras(prisma);
+}
 
+async function seedObjects(reset: object, passwordHash: string) {
   const brigades = [];
   for (const b of BRIGADES) {
     const foreman = await prisma.user.upsert({
@@ -151,7 +158,7 @@ async function main() {
   const contract = await prisma.contract.create({
     data: {
       customerId: customer.id,
-      number: 'ТЭ4-0520/1-2026',
+      number: DEMO_CONTRACT,
       date: new Date('2026-05-20'),
       responsible: 'Кондратьева Вера Анатольевна',
     },
